@@ -1,9 +1,11 @@
 import * as THREE from 'three';
+import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
 import './style.css';
 import {LETTERS,clamp,smooth,timeline,localMorph,slotPosition} from './timeline.js';
 import {makeGlyphTexture,sampleGlyphField,glassVertex,glassFragment} from './glyphs.js';
 import {createCinema} from './video.js';
 import {createAtmosphere} from './atmosphere.js';
+import {COLOR_FAMILIES,GLASS_LAYERS,GRADIENT_STOPS,GRADIENT_ANGLE,glassLayer} from './visual-system.js';
 
 const canvas=document.querySelector('#scene');
 const loading=document.querySelector('#loading');
@@ -11,13 +13,18 @@ const diagnostics=document.querySelector('#diagnostics');
 const params=new URLSearchParams(location.search);
 const debug=params.has('debug');
 diagnostics.hidden=!debug||params.get('debug')==='quiet';
-const quality={layers:15,pixelRatio:Math.min(devicePixelRatio,2)};
+const quality={layers:GLASS_LAYERS,pixelRatio:Math.min(devicePixelRatio,2)};
 const state={target:0,progress:0,hover:-1,hoverAmounts:Array(10).fill(0),frames:[],phaseFrames:{},events:[],errors:[],phase:'initializing',pointer:{x:-100,y:-100},started:performance.now()};
 window.addEventListener('error',e=>state.errors.push(e.message));
 window.addEventListener('unhandledrejection',e=>state.errors.push(String(e.reason)));
 let renderer;
-try{renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true,powerPreference:'high-performance'});}catch(error){document.querySelector('#fatal-error').hidden=false;document.querySelector('#fatal-error').textContent='This experience needs a browser with WebGL 2 enabled.';loading.hidden=true;throw error;}
-renderer.setClearColor(0x030406,0);renderer.setPixelRatio(quality.pixelRatio);renderer.outputColorSpace=THREE.SRGBColorSpace;
+try{renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:false,powerPreference:'high-performance'});}catch(error){document.querySelector('#fatal-error').hidden=false;document.querySelector('#fatal-error').textContent='This experience needs a browser with WebGL 2 enabled.';loading.hidden=true;throw error;}
+renderer.setClearColor(0x000000,1);renderer.setPixelRatio(quality.pixelRatio);renderer.outputColorSpace=THREE.SRGBColorSpace;
+// Composite transparent panes in linear light, then convert to sRGB once.
+// Direct sRGB blending darkens optical overlaps and dulls the approved cores.
+const glassTarget=new THREE.WebGLRenderTarget(1,1,{type:renderer.extensions.has('EXT_color_buffer_float')?THREE.HalfFloatType:THREE.UnsignedByteType,depthBuffer:false});
+const outputPass=new OutputPass();outputPass.renderToScreen=true;
+renderer.info.autoReset=false;
 const scene=new THREE.Scene();
 const camera=new THREE.PerspectiveCamera(38,innerWidth/innerHeight,.1,80);
 let baseZ=18;
@@ -36,14 +43,17 @@ for(let i=0;i<LETTERS.length;i++){
   const geo=new THREE.PlaneGeometry(2.5,2.7);
   const layers=new THREE.InstancedBufferAttribute(new Float32Array(quality.layers),1).setUsage(THREE.DynamicDrawUsage);
   geo.setAttribute('layerPosition',layers);
-  const uniforms={uGlyph:{value:makeGlyphTexture(spec.from,spec.to)},uColor:{value:new THREE.Color(spec.color)},uHighlight:{value:new THREE.Color(spec.highlight)},uMorph:{value:0},uOpacity:{value:1},uTime:{value:0},uHover:{value:0},uPixelRatio:{value:quality.pixelRatio},uDepthBlur:{value:3.2}};
+  const optics=new THREE.InstancedBufferAttribute(new Float32Array(quality.layers*2),2).setUsage(THREE.DynamicDrawUsage);
+  geo.setAttribute('layerOptics',optics);
+  const palette=COLOR_FAMILIES[spec.family];
+  const uniforms={uGlyph:{value:makeGlyphTexture(spec.from,spec.to)},uCore:{value:new THREE.Color(palette.core)},uHighlight:{value:new THREE.Color(palette.highlight)},uMid:{value:new THREE.Color(palette.mid)},uDeep:{value:new THREE.Color(palette.deep)},uStops:{value:new THREE.Vector3(...GRADIENT_STOPS.slice(1,4))},uGradientDirection:{value:new THREE.Vector2(Math.sin(THREE.MathUtils.degToRad(GRADIENT_ANGLE)),-Math.cos(THREE.MathUtils.degToRad(GRADIENT_ANGLE)))},uBounds:{value:new THREE.Vector4((spec.from==='I'?58:194)/256,(spec.from==='-'?25:200)/256,((spec.to||spec.from)==='I'?58:194)/256,((spec.to||spec.from)==='-'?25:200)/256)},uMorph:{value:0},uOpacity:{value:1},uTime:{value:0},uPixelRatio:{value:quality.pixelRatio},uDepthBlur:{value:3.2}};
   const material=new THREE.ShaderMaterial({vertexShader:glassVertex,fragmentShader:glassFragment,uniforms,transparent:true,depthWrite:false,side:THREE.DoubleSide});
   const mesh=new THREE.InstancedMesh(geo,material,quality.layers);mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);mesh.frustumCulled=false;
   mesh.userData.index=i;mesh.boundingSphere=new THREE.Sphere(new THREE.Vector3(),4);
   const group=new THREE.Group();group.add(mesh);root.add(group);
   const hit=new THREE.Mesh(hitGeometry,hitMaterial);hit.userData.index=i;root.add(hit);
   const label=document.createElement('div');label.className='letter-label';label.innerHTML=`${spec.title}<small>${spec.subtitle}</small>`;labels.append(label);
-  glyphs.push({spec,group,mesh,layers,uniforms,hit,label,morph:0,opacity:1});
+  glyphs.push({spec,group,mesh,layers,optics,uniforms,hit,label,morph:0,opacity:1});
 }
 const cinema=createCinema();
 const atmosphere=createAtmosphere();
@@ -59,6 +69,8 @@ function resize(){
   camera.aspect=innerWidth/innerHeight;
   baseZ=Math.max(14.5,7.5/(Math.tan(THREE.MathUtils.degToRad(19))*camera.aspect));
   camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);
+  const drawingSize=renderer.getDrawingBufferSize(new THREE.Vector2());
+  glassTarget.setSize(drawingSize.x,drawingSize.y);
 }
 resize();addEventListener('resize',resize);
 addEventListener('pointermove',event=>{state.pointer.x=event.clientX;state.pointer.y=event.clientY;});
@@ -95,18 +107,19 @@ function render(now){
     g.group.position.set(pos.x,pos.y,0);
     g.group.rotation.set(-.3,-.38,0);
     g.hit.position.set(pos.x,pos.y,.55);g.hit.rotation.copy(g.group.rotation);
-    g.uniforms.uMorph.value=g.morph;g.uniforms.uOpacity.value=g.opacity;g.uniforms.uTime.value=t+i*.37;g.uniforms.uHover.value=hover;
+    g.uniforms.uMorph.value=g.morph;g.uniforms.uOpacity.value=g.opacity;g.uniforms.uTime.value=t+i*.37;
     g.uniforms.uDepthBlur.value=3.2*(1-timelineState.push);
     const depth=2.05*(1-.28*timelineState.morph)+hover*.25;
-    const flow=((t+i*.37)*.032*quality.layers)%1;
     for(let j=0;j<quality.layers;j++){
       // Keep every pane rigid and draw back to front even across the loop seam.
-      const l=(j+flow)/quality.layers;
-      g.layers.setX(j,l);
-      temp.position.set(0,0,(l-.5)*depth);
+      const layer=glassLayer(j,t+i*.37);
+      g.layers.setX(j,layer.position);
+      g.optics.setXY(j,layer.brightness,layer.opacity);
+      temp.position.set(0,0,(layer.position-.5)*depth);
       temp.updateMatrix();g.mesh.setMatrixAt(j,temp.matrix);
     }
     g.layers.needsUpdate=true;
+    g.optics.needsUpdate=true;
     g.mesh.instanceMatrix.needsUpdate=true;
     g.group.visible=lettersOpacity>.002;
     labelPoint.set(pos.x,pos.y-1.83,0).project(camera);
@@ -119,7 +132,7 @@ function render(now){
     const g=glyphs[h.object.userData.index];
     if(g.spec.to===null&&timelineState.morph>.97)return false;
     const layer=g.layers.getX(h.instanceId);
-    if(layer<.03||layer>.97)return false;
+    if(layer<.03||g.optics.getY(h.instanceId)<.015)return false;
     const [source,target]=sampleGlyphField(g.uniforms.uGlyph.value.image,h.uv.x,h.uv.y);
     const baseline=source*(1-timelineState.morph)+target*timelineState.morph;
     const current=source*(1-g.morph)+target*g.morph;
@@ -129,13 +142,15 @@ function render(now){
   if(nextHover!==state.hover){state.events.push({type:'hover',from:state.hover,to:nextHover,time:now});if(state.events.length>80)state.events.shift();}
   state.hover=nextHover;
   const reveal=timelineState.cinema;
+  canvas.style.opacity=String(1-reveal);
   cinemaElement.style.opacity=String(reveal);cinemaElement.style.visibility=reveal>.001?'visible':'hidden';cinemaElement.style.transform=`translate(-50%, -62%) scale(${.68+.32*reveal})`;
   cinema.update(reveal,now);
   atmosphere.update(cinema.data.time,reveal,dt);
   chapter.textContent=timelineState.chapter;
   instruction.textContent=reveal>.6?'SCROLL UP TO RETURN':timelineState.morph>.9?'SCROLL INTO THE FILM':'HOVER TO DISCOVER · SCROLL TO EXPLORE';
   fill.style.height=`${state.progress*100}%`;progressLabel.textContent=`${String(Math.round(state.progress*100)).padStart(2,'0')} / 100`;
-  renderer.render(scene,camera);
+  renderer.info.reset();renderer.setRenderTarget(glassTarget);renderer.render(scene,camera);
+  outputPass.render(renderer,null,glassTarget);
   if(t>4&&!document.hidden&&actualDt<1000){state.frames.push(actualDt);if(state.frames.length>1800)state.frames.shift();const list=state.phaseFrames[state.phase]??=[];list.push(actualDt);if(list.length>1800)list.shift();}
   if(now-lastReport>500){lastReport=now;const report=snapshot();diagnostics.dataset.report=JSON.stringify(report);diagnostics.textContent=JSON.stringify({phase:report.phase,progress:report.progress,hover:report.hover,viewport:report.viewport,performance:report.performance,video:report.video,atmosphere:report.atmosphere,errors:report.errors},null,2);if(import.meta.env.DEV&&debug&&now-lastSave>2500){lastSave=now;navigator.sendBeacon('/__showreel_metrics',new Blob([JSON.stringify(report)],{type:'application/json'}));}}
   requestAnimationFrame(render);

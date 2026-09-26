@@ -60,44 +60,84 @@ export function sampleGlyphField({data,width,height},u,v){
 
 export const glassVertex=`
   attribute float layerPosition;
-  varying vec2 vUv; varying float vLayer;
-  void main(){vUv=uv;vLayer=layerPosition;vec4 p=instanceMatrix*vec4(position,1.);gl_Position=projectionMatrix*modelViewMatrix*p;}
+  attribute vec2 layerOptics;
+  varying vec2 vUv,vOptics; varying float vLayer;
+  void main(){vUv=uv;vLayer=layerPosition;vOptics=layerOptics;vec4 p=instanceMatrix*vec4(position,1.);gl_Position=projectionMatrix*modelViewMatrix*p;}
 `;
 export const glassFragment=`
   uniform sampler2D uGlyph;
-  uniform vec3 uColor,uHighlight;
-  uniform float uMorph,uOpacity,uTime,uHover,uPixelRatio,uDepthBlur;
-  varying vec2 vUv; varying float vLayer;
-  void main(){
-    vec2 uv=vUv;
-    vec4 sampleColor=texture2D(uGlyph,uv);
+  uniform vec3 uCore,uHighlight,uMid,uDeep,uStops;
+  uniform vec4 uBounds;
+  uniform vec2 uGradientDirection;
+  uniform float uMorph,uOpacity,uTime,uPixelRatio,uDepthBlur;
+  varying vec2 vUv,vOptics; varying float vLayer;
+
+  float field(vec2 uv){
+    vec4 packed=texture2D(uGlyph,uv);
     vec2 unpack16=vec2(256./257.,1./257.);
-    float d=mix(dot(sampleColor.rg,unpack16),dot(sampleColor.ba,unpack16),uMorph)-.5;
+    return mix(dot(packed.rg,unpack16),dot(packed.ba,unpack16),uMorph)-.5;
+  }
+  vec4 glassGradient(float t){
+    if(t<uStops.x)return vec4(mix(uHighlight,uCore,t/uStops.x),1.);
+    if(t<uStops.y)return vec4(mix(uCore,uMid,(t-uStops.x)/(uStops.y-uStops.x)),1.);
+    if(t<uStops.z)return mix(vec4(uMid,1.),vec4(uDeep,.45),(t-uStops.y)/(uStops.z-uStops.y));
+    return mix(vec4(uDeep,.45),vec4(0.),(t-uStops.z)/(1.-uStops.z));
+  }
+  void main(){
+    float d=field(vUv);
     float pixel=max(fwidth(d),.00001);
-    // Panes move from vLayer=0 (far) to 1 (near). Broaden coverage, not
-    // geometry, so distant edges soften without wobble or extra bright lines.
+    // Selective defocus broadens coverage, never the primary front contour.
     float defocus=1.-smoothstep(.08,.82,vLayer);
     float blur=defocus*defocus*uDepthBlur*uPixelRatio;
     float aa=pixel*sqrt(.75*.75+blur*blur);
     float shape=smoothstep(-aa,aa,d);
-    // Integrate a soft contour in screen pixels instead of a subpixel spike.
-    float halfStroke=pixel*max(.7,uPixelRatio*.6);
-    // Integrate the contour across the blur kernel; spreading it reduces its
-    // peak alpha instead of turning a distant thin edge into a luminous band.
+    float halfStroke=pixel*max(.65,uPixelRatio*.55);
     float edge=smoothstep(-aa,aa,d+halfStroke)-smoothstep(-aa,aa,d-halfStroke);
-    float sweep=pow(max(0.,sin(uv.x*2.8+uv.y*2.4-uTime*.32+vLayer*1.5)),14.);
-    float lobe=pow(max(0.,cos(uv.y*4.0-vLayer*2.5+uTime*.2)),6.);
-    // Broad colored faces carry the light; outlines only describe the panes.
-    float front=smoothstep(.25,.86,vLayer);
-    float face=shape*(.05+.16*front+.12*lobe+.19*sweep);
-    float envelope=smoothstep(0.,.12,vLayer)*(1.-smoothstep(.87,1.,vLayer));
-    float alpha=(face+edge*(.16+.065*front)) * uOpacity*envelope;
+
+    // Normalize to the ink bounds, so slender I and the dash receive the same
+    // approved 135-degree gradient as wide letters, including during morphs.
+    vec2 ink=(vUv-.5)/mix(uBounds.xy,uBounds.zw,uMorph)+.5;
+    float diagonal=clamp(dot(vec2(ink.x,1.-ink.y),uGradientDirection)/(uGradientDirection.x+uGradientDirection.y),0.,1.);
+    vec4 body=glassGradient(diagonal);
+
+    // Frosted cuts diffuse incident light across a broad angular response.
+    // Keep geometry and coverage stable; roughness never jitters UVs/normals.
+    float e=3.5/512.;
+    vec2 slope=vec2(field(vUv+vec2(e,0.))-field(vUv-vec2(e,0.)),field(vUv+vec2(0.,e))-field(vUv-vec2(0.,e)));
+    vec2 normal=-slope/max(length(slope),.00001);
+    float key=max(0.,dot(normal,normalize(vec2(-.55,.83))));
+    float bounce=max(0.,dot(normal,normalize(vec2(.72,-.69))));
+    float cut=shape*(1.-smoothstep(0.,max(.10,pixel*2.),d));
+    float front=smoothstep(.6,1.,vLayer);
+
+    // Broad internal light pools replace the polished, diagonal softbox stripe.
+    // Only the light drifts. Front structure remains perfectly stationary.
+    vec2 drift=vec2(sin(uTime*.16),cos(uTime*.13))*.018;
+    vec2 upper=(ink-vec2(.30,.76)-drift)/vec2(.30,.25);
+    vec2 lower=(ink-vec2(.70,.22)+drift)/vec2(.24,.22);
+    float whitePool=clamp(exp(-dot(upper,upper)*1.25)+.42*exp(-dot(lower,lower)*1.5),0.,1.);
+    float scatter=whitePool*(.38+.62*front);
+    float coreLight=shape*exp(-pow((d-.13)/.18,2.))*(.45+.55*key);
+    // Lift the transmitted core with the approved hue, not exposure/gamma.
+    // The base retains the specified four colors and transparent-black tail.
+    float corePresence=(.80+.15*coreLight)*(1.-smoothstep(.62,1.,diagonal));
+    vec3 tint=mix(body.rgb,uCore,corePresence);
+    vec3 frostWhite=mix(uHighlight,vec3(1.),.4);
+    float milkyLight=clamp(scatter*.86+cut*key*.14,0.,.91);
+    tint=mix(tint,frostWhite,milkyLight);
+    // Frost has fuller diffuse density, while the back panes still transmit.
+    float face=shape*(.36+.26*front+.27*scatter)+cut*.1;
+    float surface=clamp(face+edge*(.15+.13*key),0.,1.)*mix(body.a,1.,scatter*.62)*(1.-smoothstep(.90,1.,diagonal));
+
+    // Soft white spill is restricted to the lit regions; never blur the whole
+    // letter. The SDF front silhouette keeps its original pixel coverage AA.
+    float glowWidth=pixel*(4.2+defocus*1.5)*uPixelRatio;
+    float halo=exp(-pow(abs(d)/max(glowWidth,.00001),2.))*(1.-shape);
+    float glow=halo*(whitePool*.16+key*.008)*body.a;
+    float alpha=clamp(surface+glow,0.,1.)*vOptics.y*uOpacity;
     if(alpha<.0001)discard;
-    // Keep linear RGB bounded: overexposure turns orange into yellow and
-    // washes red into pink. Each glyph has its own reference-colored light.
-    vec3 tint=uColor*(.65+.35*front);
-    float specular=clamp(pow(sweep,1.5)*.9+edge*.045+uHover*.035,0.,1.);
-    tint=mix(tint,uHighlight,specular);
+    tint=mix(tint,frostWhite,glow/max(surface+glow,.0001));
+    tint*=vOptics.x;
     gl_FragColor=vec4(tint,alpha);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
