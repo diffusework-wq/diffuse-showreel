@@ -65,8 +65,8 @@ export const glassVertex=`
 `;
 export const glassFragment=`
   uniform sampler2D uGlyph;
-  uniform vec3 uColor;
-  uniform float uMorph,uOpacity,uTime,uHover,uPixelRatio;
+  uniform vec3 uColor,uHighlight;
+  uniform float uMorph,uOpacity,uTime,uHover,uPixelRatio,uDepthBlur;
   varying vec2 vUv; varying float vLayer;
   void main(){
     vec2 uv=vUv;
@@ -74,23 +74,30 @@ export const glassFragment=`
     vec2 unpack16=vec2(256./257.,1./257.);
     float d=mix(dot(sampleColor.rg,unpack16),dot(sampleColor.ba,unpack16),uMorph)-.5;
     float pixel=max(fwidth(d),.00001);
-    float aa=pixel*.75;
+    // Panes move from vLayer=0 (far) to 1 (near). Broaden coverage, not
+    // geometry, so distant edges soften without wobble or extra bright lines.
+    float defocus=1.-smoothstep(.08,.82,vLayer);
+    float blur=defocus*defocus*uDepthBlur*uPixelRatio;
+    float aa=pixel*sqrt(.75*.75+blur*blur);
     float shape=smoothstep(-aa,aa,d);
     // Integrate a soft contour in screen pixels instead of a subpixel spike.
     float halfStroke=pixel*max(.7,uPixelRatio*.6);
-    float edge=1.-smoothstep(max(0.,halfStroke-aa),halfStroke+aa,abs(d));
+    // Integrate the contour across the blur kernel; spreading it reduces its
+    // peak alpha instead of turning a distant thin edge into a luminous band.
+    float edge=smoothstep(-aa,aa,d+halfStroke)-smoothstep(-aa,aa,d-halfStroke);
     float sweep=pow(max(0.,sin(uv.x*2.8+uv.y*2.4-uTime*.32+vLayer*1.5)),14.);
     float lobe=pow(max(0.,cos(uv.y*4.0-vLayer*2.5+uTime*.2)),6.);
     // Broad colored faces carry the light; outlines only describe the panes.
     float front=smoothstep(.25,.86,vLayer);
-    float face=shape*(.048+.065*front+.10*lobe+.14*sweep);
+    float face=shape*(.05+.16*front+.12*lobe+.19*sweep);
     float envelope=smoothstep(0.,.12,vLayer)*(1.-smoothstep(.87,1.,vLayer));
     float alpha=(face+edge*(.16+.065*front)) * uOpacity*envelope;
-    if(alpha<.003)discard;
-    vec3 tint=uColor*(.75+.5*front);
-    vec3 highlight=mix(uColor,vec3(1.),.55);
-    tint=mix(tint,highlight,clamp(sweep*.42+edge*.07+uHover*.04,0.,.55));
-    tint*=1.65+.45*lobe+.8*sweep;
+    if(alpha<.0001)discard;
+    // Keep linear RGB bounded: overexposure turns orange into yellow and
+    // washes red into pink. Each glyph has its own reference-colored light.
+    vec3 tint=uColor*(.65+.35*front);
+    float specular=clamp(pow(sweep,1.5)*.9+edge*.045+uHover*.035,0.,1.);
+    tint=mix(tint,uHighlight,specular);
     gl_FragColor=vec4(tint,alpha);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>

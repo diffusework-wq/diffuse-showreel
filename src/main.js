@@ -36,7 +36,7 @@ for(let i=0;i<LETTERS.length;i++){
   const geo=new THREE.PlaneGeometry(2.5,2.7);
   const layers=new THREE.InstancedBufferAttribute(new Float32Array(quality.layers),1).setUsage(THREE.DynamicDrawUsage);
   geo.setAttribute('layerPosition',layers);
-  const uniforms={uGlyph:{value:makeGlyphTexture(spec.from,spec.to)},uColor:{value:new THREE.Color(spec.color)},uMorph:{value:0},uOpacity:{value:1},uTime:{value:0},uHover:{value:0},uPixelRatio:{value:quality.pixelRatio}};
+  const uniforms={uGlyph:{value:makeGlyphTexture(spec.from,spec.to)},uColor:{value:new THREE.Color(spec.color)},uHighlight:{value:new THREE.Color(spec.highlight)},uMorph:{value:0},uOpacity:{value:1},uTime:{value:0},uHover:{value:0},uPixelRatio:{value:quality.pixelRatio},uDepthBlur:{value:3.2}};
   const material=new THREE.ShaderMaterial({vertexShader:glassVertex,fragmentShader:glassFragment,uniforms,transparent:true,depthWrite:false,side:THREE.DoubleSide});
   const mesh=new THREE.InstancedMesh(geo,material,quality.layers);mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);mesh.frustumCulled=false;
   mesh.userData.index=i;mesh.boundingSphere=new THREE.Sphere(new THREE.Vector3(),4);
@@ -96,6 +96,7 @@ function render(now){
     g.group.rotation.set(-.3,-.38,0);
     g.hit.position.set(pos.x,pos.y,.55);g.hit.rotation.copy(g.group.rotation);
     g.uniforms.uMorph.value=g.morph;g.uniforms.uOpacity.value=g.opacity;g.uniforms.uTime.value=t+i*.37;g.uniforms.uHover.value=hover;
+    g.uniforms.uDepthBlur.value=3.2*(1-timelineState.push);
     const depth=2.05*(1-.28*timelineState.morph)+hover*.25;
     const flow=((t+i*.37)*.032*quality.layers)%1;
     for(let j=0;j<quality.layers;j++){

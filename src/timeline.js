@@ -1,16 +1,16 @@
 export const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
 export const smooth = (a, b, x) => { const t = clamp((x-a)/(b-a)); return t*t*(3-2*t); };
 export const LETTERS = [
-  {from:'D',to:'S',color:'#3986ff',title:'DIFFUSE.WORK',subtitle:'SHOWREEL'},
-  {from:'I',to:'H',color:'#ff950a',title:'IDEA',subtitle:'TO REALITY'},
-  {from:'F',to:null,color:'#00d9ff',title:'FLOW',subtitle:'IN MOTION'},
-  {from:'F',to:'O',color:'#e239ff',title:'FOR BRANDS',subtitle:'WORLDWIDE'},
-  {from:'U',to:'W',color:'#ffca19',title:'UNLEASH',subtitle:'POTENTIAL'},
-  {from:'S',to:'R',color:'#06efac',title:'STORY',subtitle:'IN MOTION'},
-  {from:'E',to:'E',color:'#9dceff',title:'ELEVATE',subtitle:'IDEAS'},
-  {from:'-',to:null,color:'#e2e9f1',title:'—',subtitle:'TOGETHER'},
-  {from:'W',to:'E',color:'#ff3c62',title:'WORK',subtitle:'CREATIVELY'},
-  {from:'R',to:'L',color:'#5060ff',title:'REAL',subtitle:'IMPACT'},
+  {from:'D',to:'S',color:'#155bff',highlight:'#d6e7ff',title:'DIFFUSE.WORK',subtitle:'SHOWREEL'},
+  {from:'I',to:'H',color:'#ff7900',highlight:'#ffebad',title:'IDEA',subtitle:'TO REALITY'},
+  {from:'F',to:null,color:'#00d5f4',highlight:'#b6f7ff',title:'FLOW',subtitle:'IN MOTION'},
+  {from:'F',to:'O',color:'#c900fa',highlight:'#f7a8ff',title:'FOR BRANDS',subtitle:'WORLDWIDE'},
+  {from:'U',to:'W',color:'#ffc52d',highlight:'#fff3b4',title:'UNLEASH',subtitle:'POTENTIAL'},
+  {from:'S',to:'R',color:'#00d59a',highlight:'#a3ffe0',title:'STORY',subtitle:'IN MOTION'},
+  {from:'E',to:'E',color:'#bfd5f7',highlight:'#f8fbff',title:'ELEVATE',subtitle:'IDEAS'},
+  {from:'-',to:null,color:'#c8d5e8',highlight:'#f8faff',title:'—',subtitle:'TOGETHER'},
+  {from:'W',to:'E',color:'#ff2338',highlight:'#ffb8c5',title:'WORK',subtitle:'CREATIVELY'},
+  {from:'R',to:'L',color:'#2141ff',highlight:'#c5c2ff',title:'REAL',subtitle:'IMPACT'},
 ];
 export function timeline(progress) {
   const p = clamp(progress);
