@@ -46,7 +46,7 @@ for(let i=0;i<LETTERS.length;i++){
   const optics=new THREE.InstancedBufferAttribute(new Float32Array(quality.layers*2),2).setUsage(THREE.DynamicDrawUsage);
   geo.setAttribute('layerOptics',optics);
   const palette=COLOR_FAMILIES[spec.family];
-  const uniforms={uGlyph:{value:makeGlyphTexture(spec.from,spec.to)},uCore:{value:new THREE.Color(palette.core)},uHighlight:{value:new THREE.Color(palette.highlight)},uMid:{value:new THREE.Color(palette.mid)},uDeep:{value:new THREE.Color(palette.deep)},uStops:{value:new THREE.Vector3(...GRADIENT_STOPS.slice(1,4))},uGradientDirection:{value:new THREE.Vector2(Math.sin(THREE.MathUtils.degToRad(GRADIENT_ANGLE)),-Math.cos(THREE.MathUtils.degToRad(GRADIENT_ANGLE)))},uBounds:{value:new THREE.Vector4((spec.from==='I'?58:194)/256,(spec.from==='-'?25:200)/256,((spec.to||spec.from)==='I'?58:194)/256,((spec.to||spec.from)==='-'?25:200)/256)},uMorph:{value:0},uOpacity:{value:1},uTime:{value:0},uPixelRatio:{value:quality.pixelRatio},uDepthBlur:{value:3.2}};
+  const uniforms={uGlyph:{value:makeGlyphTexture(spec.from,spec.to)},uCore:{value:new THREE.Color(palette.core)},uHighlight:{value:new THREE.Color(palette.highlight)},uMid:{value:new THREE.Color(palette.mid)},uDeep:{value:new THREE.Color(palette.deep)},uStops:{value:new THREE.Vector3(...GRADIENT_STOPS.slice(1,4))},uGradientDirection:{value:new THREE.Vector2(Math.sin(THREE.MathUtils.degToRad(GRADIENT_ANGLE)),-Math.cos(THREE.MathUtils.degToRad(GRADIENT_ANGLE)))},uBounds:{value:new THREE.Vector4((spec.from==='I'?58:194)/256,(spec.from==='-'?25:200)/256,((spec.to||spec.from)==='I'?58:194)/256,((spec.to||spec.from)==='-'?25:200)/256)},uMorph:{value:0},uOpacity:{value:1},uTime:{value:0},uPixelRatio:{value:quality.pixelRatio},uDepthBlur:{value:1.8}};
   const material=new THREE.ShaderMaterial({vertexShader:glassVertex,fragmentShader:glassFragment,uniforms,transparent:true,depthWrite:false,side:THREE.DoubleSide});
   const mesh=new THREE.InstancedMesh(geo,material,quality.layers);mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);mesh.frustumCulled=false;
   mesh.userData.index=i;mesh.boundingSphere=new THREE.Sphere(new THREE.Vector3(),4);
@@ -108,7 +108,7 @@ function render(now){
     g.group.rotation.set(-.3,-.38,0);
     g.hit.position.set(pos.x,pos.y,.55);g.hit.rotation.copy(g.group.rotation);
     g.uniforms.uMorph.value=g.morph;g.uniforms.uOpacity.value=g.opacity;g.uniforms.uTime.value=t+i*.37;
-    g.uniforms.uDepthBlur.value=3.2*(1-timelineState.push);
+    g.uniforms.uDepthBlur.value=1.8*(1-timelineState.push);
     const depth=2.05*(1-.28*timelineState.morph)+hover*.25;
     for(let j=0;j<quality.layers;j++){
       // Keep every pane rigid and draw back to front even across the loop seam.

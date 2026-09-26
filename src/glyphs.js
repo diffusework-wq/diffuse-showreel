@@ -100,43 +100,33 @@ export const glassFragment=`
     float diagonal=clamp(dot(vec2(ink.x,1.-ink.y),uGradientDirection)/(uGradientDirection.x+uGradientDirection.y),0.,1.);
     vec4 body=glassGradient(diagonal);
 
-    // Frosted cuts diffuse incident light across a broad angular response.
-    // Keep geometry and coverage stable; roughness never jitters UVs/normals.
-    float e=3.5/512.;
-    vec2 slope=vec2(field(vUv+vec2(e,0.))-field(vUv-vec2(e,0.)),field(vUv+vec2(0.,e))-field(vUv-vec2(0.,e)));
-    vec2 normal=-slope/max(length(slope),.00001);
-    float key=max(0.,dot(normal,normalize(vec2(-.55,.83))));
-    float bounce=max(0.,dot(normal,normalize(vec2(.72,-.69))));
-    float cut=shape*(1.-smoothstep(0.,max(.10,pixel*2.),d));
-    float front=smoothstep(.6,1.,vLayer);
-
-    // Broad internal light pools replace the polished, diagonal softbox stripe.
-    // Only the light drifts. Front structure remains perfectly stationary.
-    vec2 drift=vec2(sin(uTime*.16),cos(uTime*.13))*.018;
-    vec2 upper=(ink-vec2(.30,.76)-drift)/vec2(.30,.25);
-    vec2 lower=(ink-vec2(.70,.22)+drift)/vec2(.24,.22);
-    float whitePool=clamp(exp(-dot(upper,upper)*1.25)+.42*exp(-dot(lower,lower)*1.5),0.,1.);
-    float scatter=whitePool*(.38+.62*front);
-    float coreLight=shape*exp(-pow((d-.13)/.18,2.))*(.45+.55*key);
-    // Lift the transmitted core with the approved hue, not exposure/gamma.
-    // The base retains the specified four colors and transparent-black tail.
-    float corePresence=(.80+.15*coreLight)*(1.-smoothstep(.62,1.,diagonal));
+    // The video reference lights whole matte facets. A broad, hue-tinted
+    // transmission gradient replaces circular white hotspots on dark faces.
+    float front=smoothstep(.48,1.,vLayer);
+    float lightDrift=sin(uTime*.14)*.025;
+    float faceLight=1.-smoothstep(.05,.70,diagonal+lightDrift);
+    float corePresence=.90*(1.-smoothstep(.72,1.,diagonal));
     vec3 tint=mix(body.rgb,uCore,corePresence);
-    vec3 frostWhite=mix(uHighlight,vec3(1.),.4);
-    float milkyLight=clamp(scatter*.86+cut*key*.14,0.,.91);
-    tint=mix(tint,frostWhite,milkyLight);
-    // Frost has fuller diffuse density, while the back panes still transmit.
-    float face=shape*(.36+.26*front+.27*scatter)+cut*.1;
-    float surface=clamp(face+edge*(.15+.13*key),0.,1.)*mix(body.a,1.,scatter*.62)*(1.-smoothstep(.90,1.,diagonal));
+    // Preserve the approved highlight's hue: neutral white made the previous
+    // version look grey/chalky instead of brightly illuminated colored glass.
+    float diffuseWhite=(.025+.76*pow(faceLight,1.7))*(.16+.84*front);
+    tint=mix(tint,uHighlight,diffuseWhite);
 
-    // Soft white spill is restricted to the lit regions; never blur the whole
-    // letter. The SDF front silhouette keeps its original pixel coverage AA.
-    float glowWidth=pixel*(4.2+defocus*1.5)*uPixelRatio;
+    // Bright front facets, saturated middle facets, dark transparent echoes.
+    // Most perceived luminance comes from the face, not an external glow.
+    float face=shape*(.25+.64*front);
+    float faceDensity=mix(body.a,1.,faceLight*.55)*(1.-smoothstep(.92,1.,diagonal));
+    float rim=edge*(.10+.52*(1.-front));
+    float surface=clamp(face*faceDensity+rim*body.a,0.,1.);
+
+    // Rear outlines remain readable. Only a restrained spill hugs lit cuts;
+    // the front silhouette retains its original analytic pixel coverage AA.
+    float glowWidth=pixel*(2.1+defocus)*uPixelRatio;
     float halo=exp(-pow(abs(d)/max(glowWidth,.00001),2.))*(1.-shape);
-    float glow=halo*(whitePool*.16+key*.008)*body.a;
+    float glow=halo*faceLight*.035*body.a;
     float alpha=clamp(surface+glow,0.,1.)*vOptics.y*uOpacity;
     if(alpha<.0001)discard;
-    tint=mix(tint,frostWhite,glow/max(surface+glow,.0001));
+    tint=mix(tint,uHighlight,(rim*body.a*.18+glow)/max(surface+glow,.0001));
     tint*=vOptics.x;
     gl_FragColor=vec4(tint,alpha);
     #include <tonemapping_fragment>
