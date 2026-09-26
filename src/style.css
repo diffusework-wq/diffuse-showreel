@@ -13,3 +13,4 @@
 
 .water{background:radial-gradient(ellipse at 22% 0%,rgb(var(--film-a) / .3),transparent 56%),radial-gradient(ellipse at 80% 0%,rgb(var(--film-b) / .32),transparent 56%);mask-image:radial-gradient(ellipse at 50% 0%,#000 10%,transparent 72%)}
 .water-ripples{background:repeating-linear-gradient(177deg,transparent 0 9px,rgb(var(--film-b) / .26) 10px,rgb(var(--film-a) / .12) 11px,transparent 13px 26px);background-size:100% 56px}
+#sound-toggle{position:absolute;right:12px;bottom:12px;z-index:3;pointer-events:auto;border:1px solid #ffffff40;border-radius:999px;padding:10px 16px;background:#080b12bf;backdrop-filter:blur(12px);color:#eef4ff;font:500 12px/1.4 'Space Grotesk',Arial,sans-serif;letter-spacing:.08em;cursor:pointer;transition:background .2s,border-color .2s}#sound-toggle:hover,#sound-toggle:focus-visible{background:#182131e8;border-color:#c5ddff;outline:2px solid #9ac9ff;outline-offset:3px}#sound-toggle[hidden]{display:none}

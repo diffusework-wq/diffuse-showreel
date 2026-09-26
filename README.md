@@ -26,7 +26,7 @@ npm run preview
 - 初始為 `DIFFU / SE-WR`，每個字母由 15 層持續流動的透明平面組成。
 - 滑鼠碰到字形時，該字母漸變成對應字母；離開後回到目前滾輪進度的形狀。
 - 往下滾動，所有字母過渡至 `SHOW / REEL`，中間兩格消失，鏡頭繼續推進影片；往上可原路返回。
-- 影片保留 YouTube 嵌入，在同一頁靜音自動播放。離開影片階段暫停，重新進入續播，結尾循環。
+- 影片保留 YouTube 嵌入，滾入影片時優先有聲播放；瀏覽器限制自動出聲時先靜音播放，點影片右下角「開啟聲音」即可開啟。可用同一按鈕靜音，離開影片階段暫停、重新進入續播並保留聲音選擇，結尾循環。
 - 背景與水面使用依影片段落編排的配色，跟隨播放器回報的播放時間。這不是逐幀取色，也不是影片畫面的鏡像倒影。網站不下載或保存影片。
 - 觸控裝置可上下滑動瀏覽流程；沒有滑鼠的裝置沒有 hover 效果。
 
@@ -48,7 +48,7 @@ npm run preview
 
 ## GitHub Pages
 
-此專案使用公開 repo `diffusecapital-wq/diffuse-showreel`。正式網址為 `https://diffusecapital-wq.github.io/diffuse-showreel/`，發布驗證進度見 `VERIFICATION.md`。
+此專案使用公開 repo `diffusework-wq/diffuse-showreel`。正式網址為 `https://diffusework-wq.github.io/diffuse-showreel/`，發布驗證進度見 `VERIFICATION.md`。
 
 `.github/workflows/pages.yml` 已包含安裝、測試、建置和部署。設定 repo 的 **Settings → Pages → Source → GitHub Actions** 後，推送 `main` 會發布 `dist`。不需要後端、付費主機或自訂網域。
 
@@ -58,7 +58,7 @@ npm run preview
 
 ## 驗證
 
-`npm test` 驗證字母映射、轉場順序與可逆性、hover 返回滾輪基準、最終字距，以及影片光色 cue 的尋址和範圍。
+`npm test` 驗證字母映射、轉場順序與可逆性、hover 返回滾輪基準、最終字距、16-bit 字形取樣、影片光色 cue，以及有聲播放、受阻後靜音回退、點擊開聲、退出暫停與聲音選擇保留。
 
 本機開發網址加 `?debug` 會顯示可檢查的診斷面板；`?debug=quiet` 隱藏面板但保留記錄。開發伺服器每 2.5 秒將診斷存到 `.local/evidence/edge-latest.json`；這只發送到本機，不會在正式版傳送。面板記錄瀏覽器、視窗大小、各階段 frame time、互動事件、影片狀態、環境光時間和例外。
 
@@ -67,3 +67,5 @@ Edge 本機主要互動與播放驗證已完成，部署與公開網址狀態詳
 ## 外部服務
 
 影片使用 [Diffuse.work 的指定 YouTube 影片](https://www.youtube.com/watch?v=FUFHxqJYgkk)。YouTube 的嵌入許可、網路或瀏覽器自動播放設定會影響播放；發生錯誤時網站顯示狀態訊息並保留向上返回的操作。UI 字體透過 Google Fonts 載入，失敗時使用本機 Arial。
+
+滑鼠 hover 和滾輪不能保證取得有聲自動播放許可，因此影片階段提供一個小型聲音按鈕。參考 [Chromium 自動播放政策](https://developer.chrome.com/blog/autoplay/) 與 [YouTube onAutoplayBlocked 事件](https://developers.google.com/youtube/iframe_api_reference#onAutoplayBlocked)。

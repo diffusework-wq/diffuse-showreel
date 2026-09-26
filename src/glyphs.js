@@ -81,13 +81,16 @@ export const glassFragment=`
     float edge=1.-smoothstep(max(0.,halfStroke-aa),halfStroke+aa,abs(d));
     float sweep=pow(max(0.,sin(uv.x*2.8+uv.y*2.4-uTime*.32+vLayer*1.5)),14.);
     float lobe=pow(max(0.,cos(uv.y*4.0-vLayer*2.5+uTime*.2)),6.);
-    float face=shape*(.022+.07*lobe+.12*sweep);
+    // Broad colored faces carry the light; outlines only describe the panes.
+    float front=smoothstep(.25,.86,vLayer);
+    float face=shape*(.048+.065*front+.10*lobe+.14*sweep);
     float envelope=smoothstep(0.,.12,vLayer)*(1.-smoothstep(.87,1.,vLayer));
-    float alpha=(face+edge*(.20+.07*vLayer)) * uOpacity*envelope;
+    float alpha=(face+edge*(.16+.065*front)) * uOpacity*envelope;
     if(alpha<.003)discard;
-    vec3 tint=mix(uColor,uColor*.42,uv.y*.25);
-    tint=mix(tint,vec3(.82,.92,1.),clamp(edge*.27+sweep*.3+uHover*.05,0.,.7));
-    tint*=1.35+.55*lobe+.95*sweep;
+    vec3 tint=uColor*(.75+.5*front);
+    vec3 highlight=mix(uColor,vec3(1.),.55);
+    tint=mix(tint,highlight,clamp(sweep*.42+edge*.07+uHover*.04,0.,.55));
+    tint*=1.65+.45*lobe+.8*sweep;
     gl_FragColor=vec4(tint,alpha);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
