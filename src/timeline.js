@@ -1,7 +1,7 @@
 export const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
 export const smooth = (a, b, x) => { const t = clamp((x-a)/(b-a)); return t*t*(3-2*t); };
 export const LETTERS = [
-  {from:'D',to:'S',family:'electricBlue',title:'DIFFUSE.WORK',subtitle:'SHOWREEL'},
+  {from:'D',to:'S',family:'electricBlue',title:'DEFINE',subtitle:'THE VISION'},
   {from:'I',to:'H',family:'amberOrange',title:'IDEA',subtitle:'TO REALITY'},
   {from:'F',to:null,family:'cyan',title:'FLOW',subtitle:'IN MOTION'},
   {from:'F',to:'O',family:'magenta',title:'FOR BRANDS',subtitle:'WORLDWIDE'},

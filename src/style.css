@@ -18,3 +18,8 @@
 /* Keep the opaque linear-light canvas and text in explicit compositing layers. */
 #scene{z-index:1;will-change:opacity}
 .masthead,.footer,#letter-labels,.progress-track{transform:translateZ(0);will-change:transform}
+
+/* Reference captions: clearer, heavier, widely tracked two-line lettering. */
+.letter-label{font-family:Arial,sans-serif;font-size:12px;font-weight:700;letter-spacing:.32em;line-height:1.85;color:#e4e9f0}
+.letter-label small{font-size:9px;font-weight:600;letter-spacing:.36em;color:#b0bac9}
+@media(max-width:700px){.letter-label{font-size:8.5px;letter-spacing:.17em}.letter-label small{font-size:7px;letter-spacing:.19em}}

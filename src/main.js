@@ -46,7 +46,7 @@ for(let i=0;i<LETTERS.length;i++){
   const optics=new THREE.InstancedBufferAttribute(new Float32Array(quality.layers*2),2).setUsage(THREE.DynamicDrawUsage);
   geo.setAttribute('layerOptics',optics);
   const palette=COLOR_FAMILIES[spec.family];
-  const uniforms={uGlyph:{value:makeGlyphTexture(spec.from,spec.to)},uCore:{value:new THREE.Color(palette.core)},uHighlight:{value:new THREE.Color(palette.highlight)},uMid:{value:new THREE.Color(palette.mid)},uDeep:{value:new THREE.Color(palette.deep)},uStops:{value:new THREE.Vector3(...GRADIENT_STOPS.slice(1,4))},uGradientDirection:{value:new THREE.Vector2(Math.sin(THREE.MathUtils.degToRad(GRADIENT_ANGLE)),-Math.cos(THREE.MathUtils.degToRad(GRADIENT_ANGLE)))},uBounds:{value:new THREE.Vector4((spec.from==='I'?58:194)/256,(spec.from==='-'?25:200)/256,((spec.to||spec.from)==='I'?58:194)/256,((spec.to||spec.from)==='-'?25:200)/256)},uMorph:{value:0},uOpacity:{value:1},uTime:{value:0},uPixelRatio:{value:quality.pixelRatio},uDepthBlur:{value:1.8}};
+  const uniforms={uResolution:{value:new THREE.Vector2(innerWidth*quality.pixelRatio,innerHeight*quality.pixelRatio)},uTrailDistance:{value:.12},uGlyph:{value:makeGlyphTexture(spec.from,spec.to)},uCore:{value:new THREE.Color(palette.core)},uHighlight:{value:new THREE.Color(palette.highlight)},uMid:{value:new THREE.Color(palette.mid)},uDeep:{value:new THREE.Color(palette.deep)},uStops:{value:new THREE.Vector3(...GRADIENT_STOPS.slice(1,4))},uGradientDirection:{value:new THREE.Vector2(Math.sin(THREE.MathUtils.degToRad(GRADIENT_ANGLE)),-Math.cos(THREE.MathUtils.degToRad(GRADIENT_ANGLE)))},uBounds:{value:new THREE.Vector4((spec.from==='I'?58:194)/256,(spec.from==='-'?25:200)/256,((spec.to||spec.from)==='I'?58:194)/256,((spec.to||spec.from)==='-'?25:200)/256)},uMorph:{value:0},uOpacity:{value:1},uTime:{value:0},uPixelRatio:{value:quality.pixelRatio},uDepthBlur:{value:1.8}};
   const material=new THREE.ShaderMaterial({vertexShader:glassVertex,fragmentShader:glassFragment,uniforms,transparent:true,depthWrite:false,side:THREE.DoubleSide});
   const mesh=new THREE.InstancedMesh(geo,material,quality.layers);mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);mesh.frustumCulled=false;
   mesh.userData.index=i;mesh.boundingSphere=new THREE.Sphere(new THREE.Vector3(),4);
@@ -65,7 +65,7 @@ const progressLabel=document.querySelector('#progress-label');
 
 function resize(){
   quality.pixelRatio=Math.min(devicePixelRatio,2);renderer.setPixelRatio(quality.pixelRatio);
-  for(const g of glyphs)g.uniforms.uPixelRatio.value=quality.pixelRatio;
+  for(const g of glyphs){g.uniforms.uPixelRatio.value=quality.pixelRatio;g.uniforms.uResolution.value.set(innerWidth*quality.pixelRatio,innerHeight*quality.pixelRatio);}
   camera.aspect=innerWidth/innerHeight;
   baseZ=Math.max(14.5,7.5/(Math.tan(THREE.MathUtils.degToRad(19))*camera.aspect));
   camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);
@@ -110,6 +110,7 @@ function render(now){
     g.uniforms.uMorph.value=g.morph;g.uniforms.uOpacity.value=g.opacity;g.uniforms.uTime.value=t+i*.37;
     g.uniforms.uDepthBlur.value=1.8*(1-timelineState.push);
     const depth=2.05*(1-.28*timelineState.morph)+hover*.25;
+    g.uniforms.uTrailDistance.value=depth*.0288*2.;
     for(let j=0;j<quality.layers;j++){
       // Keep every pane rigid and draw back to front even across the loop seam.
       const layer=glassLayer(j,t+i*.37);

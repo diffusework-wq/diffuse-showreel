@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {LETTERFORMS} from './letterforms.js';
 const SIZE=512;
 // Exact squared Euclidean distance transform, O(n) per scanline.
 function edtLine(f, n, d, v, z) {
@@ -23,11 +24,18 @@ function glyphSdf(char) {
   const canvas=document.createElement('canvas');canvas.width=canvas.height=SIZE;
   const ctx=canvas.getContext('2d',{willReadFrequently:true});
   ctx.fillStyle='#000';ctx.fillRect(0,0,SIZE,SIZE);ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='alphabetic';
-  ctx.font='900 245px "Arial Black", Arial, sans-serif';
+  ctx.font='700 245px Arial, sans-serif';
+  const form=LETTERFORMS[char];
+  if(form){
+    const inkWidth=(char==='I'?58:194)*(SIZE/256),inkHeight=200*(SIZE/256);
+    ctx.save();ctx.translate((SIZE-inkWidth)/2,(SIZE-inkHeight)/2);
+    ctx.scale(inkWidth/form.width,inkHeight/200);ctx.fill(new Path2D(form.path),'evenodd');ctx.restore();
+  }else{
   const metric=ctx.measureText(char), inkHeight=metric.actualBoundingBoxAscent+metric.actualBoundingBoxDescent;
   const sx=(char==='I'?58:194)*(SIZE/256)/Math.max(metric.width,1),sy=(char==='-'?25:200)*(SIZE/256)/Math.max(inkHeight,1);
   ctx.save();ctx.translate(SIZE/2,SIZE/2);ctx.scale(sx,sy);
   ctx.fillText(char,0,(metric.actualBoundingBoxAscent-metric.actualBoundingBoxDescent)/2);ctx.restore();
+  }
   const rgba=ctx.getImageData(0,0,SIZE,SIZE).data;
   const mask=new Uint8Array(SIZE*SIZE);for(let i=0;i<mask.length;i++)mask[i]=rgba[i*4]>128?1:0;
   const inside=distance(mask,0),outside=distance(mask,1),out=new Uint16Array(mask.length);
@@ -61,8 +69,18 @@ export function sampleGlyphField({data,width,height},u,v){
 export const glassVertex=`
   attribute float layerPosition;
   attribute vec2 layerOptics;
-  varying vec2 vUv,vOptics; varying float vLayer;
-  void main(){vUv=uv;vLayer=layerPosition;vOptics=layerOptics;vec4 p=instanceMatrix*vec4(position,1.);gl_Position=projectionMatrix*modelViewMatrix*p;}
+  uniform vec2 uResolution;
+  uniform float uTrailDistance;
+  varying vec2 vUv,vOptics,vTrailPixels; varying float vLayer;
+  void main(){
+    vUv=uv;vLayer=layerPosition;vOptics=layerOptics;
+    vec4 p=instanceMatrix*vec4(position,1.);
+    vec4 current=projectionMatrix*modelViewMatrix*p;
+    p.z-=uTrailDistance*(1.-smoothstep(.5,.94,vLayer));
+    vec4 previous=projectionMatrix*modelViewMatrix*p;
+    vTrailPixels=(current.xy/current.w-previous.xy/previous.w)*.5*uResolution;
+    gl_Position=current;
+  }
 `;
 export const glassFragment=`
   uniform sampler2D uGlyph;
@@ -70,7 +88,7 @@ export const glassFragment=`
   uniform vec4 uBounds;
   uniform vec2 uGradientDirection;
   uniform float uMorph,uOpacity,uTime,uPixelRatio,uDepthBlur;
-  varying vec2 vUv,vOptics; varying float vLayer;
+  varying vec2 vUv,vOptics,vTrailPixels; varying float vLayer;
 
   float field(vec2 uv){
     vec4 packed=texture2D(uGlyph,uv);
@@ -91,8 +109,19 @@ export const glassFragment=`
     float blur=defocus*defocus*uDepthBlur*uPixelRatio;
     float aa=pixel*sqrt(.75*.75+blur*blur);
     float shape=smoothstep(-aa,aa,d);
-    float halfStroke=pixel*max(.65,uPixelRatio*.55);
+    float halfStroke=pixel*max(.8,uPixelRatio*.72);
     float edge=smoothstep(-aa,aa,d+halfStroke)-smoothstep(-aa,aa,d-halfStroke);
+    // A short virtual shutter samples each moving pane along its projected
+    // depth motion. The fixed front pane has exactly zero trail displacement.
+    vec2 trailUv=dFdx(vUv)*vTrailPixels.x+dFdy(vUv)*vTrailPixels.y;
+    float trailShape=shape*(8./36.),trailEdge=edge*(8./36.);
+    for(int j=1;j<=7;j++){
+      float sampleD=field(vUv+trailUv*(float(j)/7.));
+      float weight=(8.-float(j))/36.;
+      trailShape+=smoothstep(-aa,aa,sampleD)*weight;
+      trailEdge+=(smoothstep(-aa,aa,sampleD+halfStroke)-smoothstep(-aa,aa,sampleD-halfStroke))*weight;
+    }
+    shape=trailShape;edge=trailEdge;
 
     // Normalize to the ink bounds, so slender I and the dash receive the same
     // approved 135-degree gradient as wide letters, including during morphs.
@@ -114,19 +143,19 @@ export const glassFragment=`
 
     // Bright front facets, saturated middle facets, dark transparent echoes.
     // Most perceived luminance comes from the face, not an external glow.
-    float face=shape*(.25+.64*front);
+    float face=shape*(.18+.46*front);
     float faceDensity=mix(body.a,1.,faceLight*.55)*(1.-smoothstep(.92,1.,diagonal));
-    float rim=edge*(.10+.52*(1.-front));
+    float rim=edge*(.64+.85*(1.-front));
     float surface=clamp(face*faceDensity+rim*body.a,0.,1.);
 
     // Rear outlines remain readable. Only a restrained spill hugs lit cuts;
     // the front silhouette retains its original analytic pixel coverage AA.
-    float glowWidth=pixel*(2.1+defocus)*uPixelRatio;
+    float glowWidth=pixel*(5.0+defocus*1.5)*uPixelRatio;
     float halo=exp(-pow(abs(d)/max(glowWidth,.00001),2.))*(1.-shape);
-    float glow=halo*faceLight*.035*body.a;
+    float glow=halo*(.025+faceLight*.14)*body.a;
     float alpha=clamp(surface+glow,0.,1.)*vOptics.y*uOpacity;
     if(alpha<.0001)discard;
-    tint=mix(tint,uHighlight,(rim*body.a*.18+glow)/max(surface+glow,.0001));
+    tint=mix(tint,uHighlight,clamp((rim*body.a*(.24+.5*faceLight)+glow)/max(surface+glow,.0001),0.,1.));
     tint*=vOptics.x;
     gl_FragColor=vec4(tint,alpha);
     #include <tonemapping_fragment>
