@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import './style.css';
 import {LETTERS,clamp,smooth,timeline,localMorph,slotPosition} from './timeline.js';
-import {makeGlyphTexture,glassVertex,glassFragment} from './glyphs.js';
+import {makeGlyphTexture,sampleGlyphField,glassVertex,glassFragment} from './glyphs.js';
 import {createCinema} from './video.js';
 import {createAtmosphere} from './atmosphere.js';
 
@@ -11,7 +11,7 @@ const diagnostics=document.querySelector('#diagnostics');
 const params=new URLSearchParams(location.search);
 const debug=params.has('debug');
 diagnostics.hidden=!debug||params.get('debug')==='quiet';
-const quality={layers:15,pixelRatio:Math.min(devicePixelRatio,1.5)};
+const quality={layers:15,pixelRatio:Math.min(devicePixelRatio,2)};
 const state={target:0,progress:0,hover:-1,hoverAmounts:Array(10).fill(0),frames:[],phaseFrames:{},events:[],errors:[],phase:'initializing',pointer:{x:-100,y:-100},started:performance.now()};
 window.addEventListener('error',e=>state.errors.push(e.message));
 window.addEventListener('unhandledrejection',e=>state.errors.push(String(e.reason)));
@@ -34,15 +34,16 @@ const labelPoint=new THREE.Vector3();
 for(let i=0;i<LETTERS.length;i++){
   const spec=LETTERS[i];
   const geo=new THREE.PlaneGeometry(2.5,2.7);
-  geo.setAttribute('layerIndex',new THREE.InstancedBufferAttribute(Float32Array.from({length:quality.layers},(_,n)=>n/quality.layers),1));
-  const uniforms={uGlyph:{value:makeGlyphTexture(spec.from,spec.to)},uColor:{value:new THREE.Color(spec.color)},uMorph:{value:0},uOpacity:{value:1},uTime:{value:0},uHover:{value:0}};
+  const layers=new THREE.InstancedBufferAttribute(new Float32Array(quality.layers),1).setUsage(THREE.DynamicDrawUsage);
+  geo.setAttribute('layerPosition',layers);
+  const uniforms={uGlyph:{value:makeGlyphTexture(spec.from,spec.to)},uColor:{value:new THREE.Color(spec.color)},uMorph:{value:0},uOpacity:{value:1},uTime:{value:0},uHover:{value:0},uPixelRatio:{value:quality.pixelRatio}};
   const material=new THREE.ShaderMaterial({vertexShader:glassVertex,fragmentShader:glassFragment,uniforms,transparent:true,depthWrite:false,side:THREE.DoubleSide});
   const mesh=new THREE.InstancedMesh(geo,material,quality.layers);mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);mesh.frustumCulled=false;
   mesh.userData.index=i;mesh.boundingSphere=new THREE.Sphere(new THREE.Vector3(),4);
   const group=new THREE.Group();group.add(mesh);root.add(group);
   const hit=new THREE.Mesh(hitGeometry,hitMaterial);hit.userData.index=i;root.add(hit);
   const label=document.createElement('div');label.className='letter-label';label.innerHTML=`${spec.title}<small>${spec.subtitle}</small>`;labels.append(label);
-  glyphs.push({spec,group,mesh,uniforms,hit,label,morph:0,opacity:1});
+  glyphs.push({spec,group,mesh,layers,uniforms,hit,label,morph:0,opacity:1});
 }
 const cinema=createCinema();
 const atmosphere=createAtmosphere();
@@ -53,6 +54,8 @@ const fill=document.querySelector('#progress-fill');
 const progressLabel=document.querySelector('#progress-label');
 
 function resize(){
+  quality.pixelRatio=Math.min(devicePixelRatio,2);renderer.setPixelRatio(quality.pixelRatio);
+  for(const g of glyphs)g.uniforms.uPixelRatio.value=quality.pixelRatio;
   camera.aspect=innerWidth/innerHeight;
   baseZ=Math.max(14.5,7.5/(Math.tan(THREE.MathUtils.degToRad(19))*camera.aspect));
   camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);
@@ -89,18 +92,20 @@ function render(now){
     const hover=state.hoverAmounts[i];
     g.morph=localMorph(timelineState.morph,hover);
     g.opacity=lettersOpacity*(g.spec.to===null?1-smooth(.05,1,g.morph):1);
-    g.group.position.set(pos.x,pos.y,Math.sin(t*.42+i*.7)*.06);
-    g.group.rotation.set(-.3+Math.sin(t*.26+i)*.045,-.38+Math.cos(t*.22+i*.4)*.075,.005*Math.sin(t*.35+i));
+    g.group.position.set(pos.x,pos.y,0);
+    g.group.rotation.set(-.3,-.38,0);
     g.hit.position.set(pos.x,pos.y,.55);g.hit.rotation.copy(g.group.rotation);
     g.uniforms.uMorph.value=g.morph;g.uniforms.uOpacity.value=g.opacity;g.uniforms.uTime.value=t+i*.37;g.uniforms.uHover.value=hover;
     const depth=2.05*(1-.28*timelineState.morph)+hover*.25;
+    const flow=((t+i*.37)*.032*quality.layers)%1;
     for(let j=0;j<quality.layers;j++){
-      const l=(j/quality.layers+(t+i*.37)*.065)%1,phase=l*6-t*.5+i*.23;
-      temp.position.set(Math.sin(phase)*.06,Math.cos(phase*.83)*.025,(l-.5)*depth);
-      temp.rotation.set(0,0,Math.sin(phase)*.014);
-      temp.scale.setScalar(1+Math.sin(phase*.5)*.018);
+      // Keep every pane rigid and draw back to front even across the loop seam.
+      const l=(j+flow)/quality.layers;
+      g.layers.setX(j,l);
+      temp.position.set(0,0,(l-.5)*depth);
       temp.updateMatrix();g.mesh.setMatrixAt(j,temp.matrix);
     }
+    g.layers.needsUpdate=true;
     g.mesh.instanceMatrix.needsUpdate=true;
     g.group.visible=lettersOpacity>.002;
     labelPoint.set(pos.x,pos.y-1.83,0).project(camera);
@@ -112,14 +117,12 @@ function render(now){
   const hit=hits.find(h=>{
     const g=glyphs[h.object.userData.index];
     if(g.spec.to===null&&timelineState.morph>.97)return false;
-    const layer=(h.instanceId/quality.layers+g.uniforms.uTime.value*.065)%1;
+    const layer=g.layers.getX(h.instanceId);
     if(layer<.03||layer>.97)return false;
-    const {data,width,height}=g.uniforms.uGlyph.value.image;
-    const u=clamp(h.uv.x+Math.sin(h.uv.y*7+g.uniforms.uTime.value*.45+layer*2)*.006*(1-g.morph));
-    const offset=(Math.min(height-1,Math.floor(h.uv.y*height))*width+Math.min(width-1,Math.floor(u*width)))*4;
-    const baseline=data[offset]*(1-timelineState.morph)+data[offset+1]*timelineState.morph;
-    const current=data[offset]*(1-g.morph)+data[offset+1]*g.morph;
-    return Math.max(baseline,state.hover===h.object.userData.index?current:0)>122;
+    const [source,target]=sampleGlyphField(g.uniforms.uGlyph.value.image,h.uv.x,h.uv.y);
+    const baseline=source*(1-timelineState.morph)+target*timelineState.morph;
+    const current=source*(1-g.morph)+target*g.morph;
+    return Math.max(baseline,state.hover===h.object.userData.index?current:0)>.496;
   });
   const nextHover=hit?hit.object.userData.index:-1;
   if(nextHover!==state.hover){state.events.push({type:'hover',from:state.hover,to:nextHover,time:now});if(state.events.length>80)state.events.shift();}

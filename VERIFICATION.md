@@ -1,6 +1,6 @@
 # 驗收紀錄
 
-更新日期：2026-09-26。這是進度紀錄，不代表專案已完成或上線。
+更新日期：2026-09-26。網站已發布；下方區分已保存的驗收證據與後續視覺修正。
 
 ## 目前證據
 
@@ -15,8 +15,8 @@
 | 效能 | 實機量測完成 | `edge-showreel.json`：五個階段各 1,800 樣本，約 59.76–59.98 FPS，p95 約 16.8ms；限此機器與測試條件，不承諾所有硬體達到 60 FPS |
 | 最新版 Edge 互動與畫面 | 主流程通過 | `edge-all-hover.json` 含 0–9 全部 hover；正反向 wheel 記錄與初始、SHOW/REEL、鏡頭和影片截圖已保存；errors=[] |
 | Edge resize | 通過 | 1355×1006 與最大化 2390×1392；DPR 1.6、渲染上限 1.5，字體及影片都完整；`edge-resize-film.json`、`edge-maximized-initial.png` |
-| GitHub Pages | 正在發布 | 使用者已確認 diffusecapital-wq；公開 repo 已建立，待工作流程完成 |
-| 公開網址 | 待驗證 | 沒有遠端部署成功紀錄，不宣稱已上線 |
+| GitHub Pages | 已發布 | 首次工作流程 [36238328468](https://github.com/diffusecapital-wq/diffuse-showreel/actions/runs/36238328468) 成功 |
+| 公開網址 | 通過 | `production-http.json`：HTML、JS、CSS 均 200；`edge-production-initial.png`、`edge-production-film.png` 顯示正式 HTTPS 網址與播放畫面；內建瀏覽器也觀察到 state=1、error=null |
 
 ## Edge 驗收操作與公開站點複查流程
 
@@ -29,3 +29,9 @@
 7. 在確認的 owner 下建立公開 repo，部署後開啟實際 HTTPS 網址，再檢查靜態資產、影片播放與主要正反向流程。
 
 畫面與本機互動紀錄留在 `.local/evidence/`，不提交使用者桌面的截圖到公開 repo。
+
+## 字體邊緣穩定化
+
+使用者指出初版細邊移動時抖動。修正高亮輪廓的像素覆蓋抗鋸齒，移除 UV 波浪與薄片個別橫移、旋轉、縮放；保留較慢的剛性 Z 軸推進。字形改為 512px、雙 16-bit 距離場並保留邊緣覆蓋資訊；透明薄片持續由遠到近排列，hover 使用相同的解碼與雙線性取樣。
+
+七項測試與正式版建置通過。獨立審查確認 GPU／CPU 解碼相符、循環端點透明且重排連續。本機 1707×960、DPR 1.5 視覺檢查中，直邊已無 UV 扭動；hover 和 SHOW/REEL 轉換正常，穩定與推進階段約 60 FPS、errors=[]。資料在 `smoothing-browser.json`。這些是特定條件下的量測，畫面舒適度仍以使用者實際觀看為準。

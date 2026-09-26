@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-const SIZE=256;
+const SIZE=512;
 // Exact squared Euclidean distance transform, O(n) per scanline.
 function edtLine(f, n, d, v, z) {
   let k=0;v[0]=0;z[0]=-Infinity;z[1]=Infinity;
@@ -25,47 +25,65 @@ function glyphSdf(char) {
   ctx.fillStyle='#000';ctx.fillRect(0,0,SIZE,SIZE);ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='alphabetic';
   ctx.font='900 245px "Arial Black", Arial, sans-serif';
   const metric=ctx.measureText(char), inkHeight=metric.actualBoundingBoxAscent+metric.actualBoundingBoxDescent;
-  const sx=(char==='I'?58:194)/Math.max(metric.width,1),sy=(char==='-'?25:200)/Math.max(inkHeight,1);
+  const sx=(char==='I'?58:194)*(SIZE/256)/Math.max(metric.width,1),sy=(char==='-'?25:200)*(SIZE/256)/Math.max(inkHeight,1);
   ctx.save();ctx.translate(SIZE/2,SIZE/2);ctx.scale(sx,sy);
   ctx.fillText(char,0,(metric.actualBoundingBoxAscent-metric.actualBoundingBoxDescent)/2);ctx.restore();
   const rgba=ctx.getImageData(0,0,SIZE,SIZE).data;
   const mask=new Uint8Array(SIZE*SIZE);for(let i=0;i<mask.length;i++)mask[i]=rgba[i*4]>128?1:0;
-  const inside=distance(mask,0),outside=distance(mask,1),out=new Uint8Array(mask.length);
-  for(let y=0;y<SIZE;y++)for(let x=0;x<SIZE;x++){const i=y*SIZE+x;out[(SIZE-1-y)*SIZE+x]=Math.round(Math.min(255,Math.max(0,128+(Math.sqrt(inside[i])-Math.sqrt(outside[i]))*5)));}
+  const inside=distance(mask,0),outside=distance(mask,1),out=new Uint16Array(mask.length);
+  for(let y=0;y<SIZE;y++)for(let x=0;x<SIZE;x++){
+    const i=y*SIZE+x,coverage=rgba[i*4]/255;
+    const raw=Math.sqrt(inside[i])-Math.sqrt(outside[i]);
+    // Retain the font rasterizer's subpixel coverage at the contour.
+    const signed=coverage>0&&coverage<1?coverage-.5:Math.sign(raw)*(Math.abs(raw)-.5);
+    out[(SIZE-1-y)*SIZE+x]=Math.round(Math.min(1,Math.max(0,.5+signed/(SIZE*.2)))*65535);
+  }
   cache.set(char,out);return out;
 }
 export function makeGlyphTexture(from,to) {
   const a=glyphSdf(from),b=glyphSdf(to||from),data=new Uint8Array(SIZE*SIZE*4);
-  for(let i=0;i<a.length;i++){data[i*4]=a[i];data[i*4+1]=b[i];data[i*4+3]=255;}
+  // Two 16-bit fields in RG / BA. Linear filtering remains linear after decode.
+  for(let i=0;i<a.length;i++){data[i*4]=a[i]>>>8;data[i*4+1]=a[i]&255;data[i*4+2]=b[i]>>>8;data[i*4+3]=b[i]&255;}
   const texture=new THREE.DataTexture(data,SIZE,SIZE,THREE.RGBAFormat);
   texture.minFilter=texture.magFilter=THREE.LinearFilter;texture.generateMipmaps=false;texture.needsUpdate=true;
   return texture;
 }
+
+// Match the GPU's linear sampling for raycast hits, including byte carries.
+export function sampleGlyphField({data,width,height},u,v){
+  const x=Math.min(width-1,Math.max(0,u*width-.5)),y=Math.min(height-1,Math.max(0,v*height-.5));
+  const x0=Math.floor(x),y0=Math.floor(y),x1=Math.min(x0+1,width-1),y1=Math.min(y0+1,height-1);
+  const fx=x-x0,fy=y-y0;
+  const read=(px,py,c)=>{const index=(py*width+px)*4+c;return (data[index]*256+data[index+1])/65535;};
+  return [0,2].map(c=>(read(x0,y0,c)*(1-fx)+read(x1,y0,c)*fx)*(1-fy)+(read(x0,y1,c)*(1-fx)+read(x1,y1,c)*fx)*fy);
+}
+
 export const glassVertex=`
-  attribute float layerIndex;
-  uniform float uTime;
-  varying vec2 vUv; varying float vLayer; varying vec3 vWorld;
-  void main(){vUv=uv;vLayer=fract(layerIndex+uTime*.065);vec4 p=instanceMatrix*vec4(position,1.);vWorld=(modelMatrix*p).xyz;gl_Position=projectionMatrix*modelViewMatrix*p;}
+  attribute float layerPosition;
+  varying vec2 vUv; varying float vLayer;
+  void main(){vUv=uv;vLayer=layerPosition;vec4 p=instanceMatrix*vec4(position,1.);gl_Position=projectionMatrix*modelViewMatrix*p;}
 `;
 export const glassFragment=`
   uniform sampler2D uGlyph;
   uniform vec3 uColor;
-  uniform float uMorph,uOpacity,uTime,uHover;
-  varying vec2 vUv; varying float vLayer; varying vec3 vWorld;
+  uniform float uMorph,uOpacity,uTime,uHover,uPixelRatio;
+  varying vec2 vUv; varying float vLayer;
   void main(){
     vec2 uv=vUv;
-    uv.x+=sin(uv.y*7.+uTime*.45+vLayer*2.)*.006*(1.-uMorph);
     vec4 sampleColor=texture2D(uGlyph,uv);
-    float d=mix(sampleColor.r,sampleColor.g,uMorph)-.502;
-    float aa=max(fwidth(d),.003);
+    vec2 unpack16=vec2(256./257.,1./257.);
+    float d=mix(dot(sampleColor.rg,unpack16),dot(sampleColor.ba,unpack16),uMorph)-.5;
+    float pixel=max(fwidth(d),.00001);
+    float aa=pixel*.75;
     float shape=smoothstep(-aa,aa,d);
-    float edge=exp(-abs(d)*95.);
-    float inner=exp(-max(d,0.)*14.);
+    // Integrate a soft contour in screen pixels instead of a subpixel spike.
+    float halfStroke=pixel*max(.7,uPixelRatio*.6);
+    float edge=1.-smoothstep(max(0.,halfStroke-aa),halfStroke+aa,abs(d));
     float sweep=pow(max(0.,sin(uv.x*2.8+uv.y*2.4-uTime*.32+vLayer*1.5)),14.);
     float lobe=pow(max(0.,cos(uv.y*4.0-vLayer*2.5+uTime*.2)),6.);
     float face=shape*(.022+.07*lobe+.12*sweep);
     float envelope=smoothstep(0.,.12,vLayer)*(1.-smoothstep(.87,1.,vLayer));
-    float alpha=(face+edge*(.38+.15*vLayer)) * uOpacity*envelope;
+    float alpha=(face+edge*(.20+.07*vLayer)) * uOpacity*envelope;
     if(alpha<.003)discard;
     vec3 tint=mix(uColor,uColor*.42,uv.y*.25);
     tint=mix(tint,vec3(.82,.92,1.),clamp(edge*.27+sweep*.3+uHover*.05,0.,.7));
