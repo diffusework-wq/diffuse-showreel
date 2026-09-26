@@ -47,3 +47,11 @@
 Edge 實測觀察到受阻後靜音播放（`edge-audio-muted-fallback.json`），點擊後按鈕變成「關閉聲音」、Edge 分頁出現音訊播放標誌（`edge-audio-enabled.png`）。該截圖之後保存的同名 JSON 已是再次靜音狀態，因此不能拿那份 JSON 宣稱持續有聲或喇叭實際音量。
 
 依使用者提供的 [KOSMOS TRENDS! 影片](https://richardyee.design/kosmos-trends-promo)，檢視約 12 秒藍色薄片、26 秒 FUTURE 與結尾主視覺：保留各字色相差异，增強彩色字面、近層亮度，減少白色邊線占比；遠層暗部和既有像素抗鋸齒保留。新版在 1707×960 的瀏覽器畫面已檢查，字形的正面色彩較鮮明。
+
+## 最終正式站驗證
+
+程式 commit `4412613` 的 [Pages 工作流程 36240152801](https://github.com/diffusework-wq/diffuse-showreel/actions/runs/36240152801) 已成功完成安裝、10 項測試、建置與部署。正式 HTML、`index-D7A2C2ID.js`、`index-nevMR12_.css` 均回應 200，JS 不含本機診斷傳送端點。網址為 https://diffusework-wq.github.io/diffuse-showreel/ 。
+
+Edge 正式站已複查更新後的彩色字面、SHOW/REEL、影片播放和點擊開聲；`edge-final-colors.png`、`edge-final-audio.png`、`edge-final-return.png` 保存相應畫面。開聲後 Edge 分頁的音訊標誌可見，返回字體後消失。
+
+另以正式站播放器的診斷確認：開聲後 state=1、muted=false、volume=80、time=20.058；向上離開後 state=2、time=20.467；重入後 state=1、muted=false、time=32.187，均 error=null、errors=[]。這證明網站已取消靜音且保留續播，不代表對使用者作業系統／喇叭音量的量測。現有 hover、對應、轉場、環境光、Edge 主流程證據與上述新功能測試共同覆蓋目前版本；字體材質和配色的主觀偏好仍可繼續調整。
