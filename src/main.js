@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
 import './style.css';
-import {LETTERS,clamp,smooth,timeline,localMorph,slotPosition} from './timeline.js';
+import {LETTERS,clamp,smooth,timeline,localMorph,slotPosition,letterTurn} from './timeline.js';
 import {makeGlyphTexture,sampleGlyphField,glassVertex,glassFragment} from './glyphs.js';
 import {createCinema} from './video.js';
 import {createAtmosphere} from './atmosphere.js';
@@ -84,7 +84,7 @@ function snapshot(){
   const durations=state.frames.filter(x=>x<1000),sorted=[...durations].sort((a,b)=>a-b);
   const mean=durations.reduce((a,b)=>a+b,0)/Math.max(durations.length,1);
   const phases=Object.fromEntries(Object.entries(state.phaseFrames).map(([key,values])=>{const s=[...values].sort((a,b)=>a-b);return [key,{samples:values.length,fps:1000/(values.reduce((a,b)=>a+b,0)/values.length),p95ms:s[Math.floor(s.length*.95)]}];}));
-  return {phase:state.phase,progress:+state.progress.toFixed(4),target:+state.target.toFixed(4),hover:state.hover,viewport:{width:innerWidth,height:innerHeight,dpr:devicePixelRatio,renderDpr:renderer.getPixelRatio()},userAgent:navigator.userAgent,performance:{samples:durations.length,fps:+(1000/mean).toFixed(1),p95ms:sorted[Math.floor(sorted.length*.95)]||0,phases},renderer:{drawCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles},letters:glyphs.map((g,i)=>({index:i,from:g.spec.from,to:g.spec.to,morph:+g.morph.toFixed(3),opacity:+g.opacity.toFixed(3),center:{x:+((g.hit.position.clone().project(camera).x*.5+.5)*innerWidth).toFixed(1),y:+((-g.hit.position.clone().project(camera).y*.5+.5)*innerHeight).toFixed(1)}})),video:{...cinema.data},atmosphere:atmosphere.data,events:state.events,errors:state.errors};
+  return {phase:state.phase,progress:+state.progress.toFixed(4),target:+state.target.toFixed(4),hover:state.hover,viewport:{width:innerWidth,height:innerHeight,dpr:devicePixelRatio,renderDpr:renderer.getPixelRatio()},userAgent:navigator.userAgent,performance:{samples:durations.length,fps:+(1000/mean).toFixed(1),p95ms:sorted[Math.floor(sorted.length*.95)]||0,phases},renderer:{drawCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles},letters:glyphs.map((g,i)=>({index:i,from:g.spec.from,to:g.spec.to,morph:+g.morph.toFixed(3),opacity:+g.opacity.toFixed(3),yaw:+g.group.rotation.y.toFixed(3),center:{x:+((g.hit.position.clone().project(camera).x*.5+.5)*innerWidth).toFixed(1),y:+((-g.hit.position.clone().project(camera).y*.5+.5)*innerHeight).toFixed(1)}})),video:{...cinema.data},atmosphere:atmosphere.data,events:state.events,errors:state.errors};
 }
 // Read-only diagnostics support verification without synthetic interaction shortcuts.
 Object.defineProperty(window,'__SHOWREEL__',{value:{snapshot},writable:false});
@@ -102,11 +102,12 @@ function render(now){
     const g=glyphs[i],pos=slotPosition(i,timelineState.morph,camera.aspect);
     state.hoverAmounts[i]+=(Number(state.hover===i)-state.hoverAmounts[i])*(1-Math.exp(-7*dt));
     const hover=state.hoverAmounts[i];
-    g.morph=localMorph(timelineState.morph,hover);
+    const turn=letterTurn(localMorph(timelineState.morph,hover));
+    g.morph=turn.morph;
     g.opacity=lettersOpacity*(g.spec.to===null?1-smooth(.05,1,g.morph):1);
     g.group.position.set(pos.x,pos.y,0);
-    g.group.rotation.set(-.3,-.38,0);
-    g.hit.position.set(pos.x,pos.y,.55);g.hit.rotation.copy(g.group.rotation);
+    g.group.rotation.set(turn.pitch,turn.yaw,0);
+    g.hit.position.set(pos.x,pos.y,.55);g.hit.rotation.set(-.3,-.38,0);
     g.uniforms.uMorph.value=g.morph;g.uniforms.uOpacity.value=g.opacity;g.uniforms.uTime.value=t+i*.37;
     g.uniforms.uDepthBlur.value=1.8*(1-timelineState.push);
     const depth=2.05*(1-.28*timelineState.morph)+hover*.25;
@@ -128,16 +129,15 @@ function render(now){
   }
   scene.updateMatrixWorld(true);
   pointer.set(state.pointer.x/innerWidth*2-1,1-state.pointer.y/innerHeight*2);raycaster.setFromCamera(pointer,camera);
-  const hits=timelineState.push<.15?raycaster.intersectObjects(glyphs.map(g=>g.mesh),false):[];
+  // Stable hit planes prevent the rotating silhouette from releasing hover.
+  const hits=timelineState.push<.15?raycaster.intersectObjects(glyphs.map(g=>g.hit),false):[];
   const hit=hits.find(h=>{
     const g=glyphs[h.object.userData.index];
     if(g.spec.to===null&&timelineState.morph>.97)return false;
-    const layer=g.layers.getX(h.instanceId);
-    if(layer<.03||g.optics.getY(h.instanceId)<.015)return false;
     const [source,target]=sampleGlyphField(g.uniforms.uGlyph.value.image,h.uv.x,h.uv.y);
-    const baseline=source*(1-timelineState.morph)+target*timelineState.morph;
-    const current=source*(1-g.morph)+target*g.morph;
-    return Math.max(baseline,state.hover===h.object.userData.index?current:0)>.496;
+    const amount=letterTurn(timelineState.morph).morph;
+    const baseline=source*(1-amount)+target*amount;
+    return state.hover===h.object.userData.index||baseline>.496;
   });
   const nextHover=hit?hit.object.userData.index:-1;
   if(nextHover!==state.hover){state.events.push({type:'hover',from:state.hover,to:nextHover,time:now});if(state.events.length>80)state.events.shift();}

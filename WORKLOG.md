@@ -76,3 +76,10 @@ CSS 的跨來源 iframe 倒影測試沒有顯示實際影片影像，因此未�
 加強薄片輪廓與局部光暈，降低大面積字面的遮蔽。拖影使用投影後的 Z 軸移動方向，以 8 次加權 SDF 取樣模擬延長曝光；固定前片的位移嚴格為零，後層才出現方向性模糊。16-bit 距離場與像素覆蓋抗鋸齒保留。
 
 13 項測試、正式建置通過。瀏覽器已確認分離 I 的 hover 可到 H、兩行轉字及 D 新文案。1707×960、DPR 1.5 的開場與鏡頭推進約 60 FPS，11 draw calls / 201 triangles，errors=[]。正式 bundle 約 500.5 kB（gzip 約 130.1 kB），Vite 僅提出大小提示，建置成功。
+
+
+## 2026-09-27 — Right-turn letter replacement
+
+Hover and wheel now share a reversible turn from -0.38 to +0.70 radians around Y. Replacement begins after the turn starts and finishes before camera push. SHOW / REEL retains the opposite facing. Stable silhouette acquisition and slot retention prevent rotation-induced hover oscillation. Palette and glass rendering are unchanged.
+
+Validation: 14 tests pass; production build passes. Browser checks confirm D to S hover settles at +0.70, all SHOW / REEL letters settle at +0.70 at scroll progress 0.5242, removed letters are transparent, and reverse scroll restores the initial composition.

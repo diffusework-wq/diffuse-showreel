@@ -24,3 +24,9 @@ export function slotPosition(index, morph, aspect) {
   const targetX=[-3.9,-1.3,0,1.3,3.9][col]*(portrait?.88:1);
   return {x:sourceX+(targetX-sourceX)*morph,y:(row===0?1.95:-1.9)*(portrait?1.25:1)};
 }
+
+// Rotate first; introduce the replacement during the middle of the turn.
+export function letterTurn(progress) {
+  const turn=smooth(0,1,progress);
+  return {yaw:-.38+1.08*turn,pitch:-.3+.12*turn,morph:smooth(.28,.82,progress)};
+}
