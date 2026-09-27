@@ -26,7 +26,7 @@ const glassTarget=new THREE.WebGLRenderTarget(1,1,{type:renderer.extensions.has(
 const outputPass=new OutputPass();outputPass.renderToScreen=true;
 renderer.info.autoReset=false;
 const scene=new THREE.Scene();
-const camera=new THREE.PerspectiveCamera(38,innerWidth/innerHeight,.1,80);
+const camera=new THREE.PerspectiveCamera(16,innerWidth/innerHeight,.1,160);
 let baseZ=18;
 const root=new THREE.Group();scene.add(root);
 const raycaster=new THREE.Raycaster();
@@ -67,7 +67,7 @@ function resize(){
   quality.pixelRatio=Math.min(devicePixelRatio,2);renderer.setPixelRatio(quality.pixelRatio);
   for(const g of glyphs){g.uniforms.uPixelRatio.value=quality.pixelRatio;g.uniforms.uResolution.value.set(innerWidth*quality.pixelRatio,innerHeight*quality.pixelRatio);}
   camera.aspect=innerWidth/innerHeight;
-  baseZ=Math.max(14.5,7.5/(Math.tan(THREE.MathUtils.degToRad(19))*camera.aspect));
+  baseZ=Math.max(35.55,7.5/(Math.tan(THREE.MathUtils.degToRad(8))*camera.aspect));
   camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);
   const drawingSize=renderer.getDrawingBufferSize(new THREE.Vector2());
   glassTarget.setSize(drawingSize.x,drawingSize.y);
@@ -109,9 +109,9 @@ function render(now){
     g.group.rotation.set(turn.pitch,turn.yaw,0);
     g.hit.position.set(pos.x,pos.y,.55);g.hit.rotation.set(-.3,-.38,0);
     g.uniforms.uMorph.value=g.morph;g.uniforms.uOpacity.value=g.opacity;g.uniforms.uTime.value=t+i*.37;
-    g.uniforms.uDepthBlur.value=1.8*(1-timelineState.push);
+    g.uniforms.uDepthBlur.value=.65*(1-timelineState.push);
     const depth=2.05*(1-.28*timelineState.morph)+hover*.25;
-    g.uniforms.uTrailDistance.value=depth*.0288*2.;
+    g.uniforms.uTrailDistance.value=depth*.0288*.8;
     for(let j=0;j<quality.layers;j++){
       // Keep every pane rigid and draw back to front even across the loop seam.
       const layer=glassLayer(j,t+i*.37);

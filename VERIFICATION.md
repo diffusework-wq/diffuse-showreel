@@ -99,3 +99,10 @@ Edge 153、2734×1396 CSS px、DPR 1.4 實測：開場約 59.9 FPS、完整 SHOW
 Hover and wheel now share a reversible turn from -0.38 to +0.70 radians around Y. Replacement begins after the turn starts and finishes before camera push. SHOW / REEL retains the opposite facing. Stable silhouette acquisition and slot retention prevent rotation-induced hover oscillation. Palette and glass rendering are unchanged.
 
 Validation: 14 tests pass; production build passes. Browser checks confirm D to S hover settles at +0.70, all SHOW / REEL letters settle at +0.70 at scroll progress 0.5242, removed letters are transparent, and reverse scroll restores the initial composition.
+
+
+## 2026-09-27 — Reference angle and color correction
+
+Supersedes the previous shallow final tilt: final yaw +0.55 rad, pitch -0.50 rad. Narrow 16-degree camera FOV and proportionally increased distance reduce inconsistent perspective across columns while preserving framing and the camera-push timeline. Glass depth projects diagonally down-left. Replace broad pastel face illumination with two localized white transmission cuts and saturated core areas; reduce rear defocus and trail length to retain thin contours.
+
+Browser visual verification: SHOW / REEL at progress 0.5242 has the revised diagonal depth and stronger color/white contrast, no console errors.

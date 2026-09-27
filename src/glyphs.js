@@ -129,22 +129,19 @@ export const glassFragment=`
     float diagonal=clamp(dot(vec2(ink.x,1.-ink.y),uGradientDirection)/(uGradientDirection.x+uGradientDirection.y),0.,1.);
     vec4 body=glassGradient(diagonal);
 
-    // The video reference lights whole matte facets. A broad, hue-tinted
-    // transmission gradient replaces circular white hotspots on dark faces.
+    // Reference lighting: saturated glass between two broad white light cuts.
+    // The cuts live on the rigid pane, so highlights never jitter with motion.
     float front=smoothstep(.48,1.,vLayer);
-    float lightDrift=sin(uTime*.14)*.025;
-    float faceLight=1.-smoothstep(.05,.70,diagonal+lightDrift);
-    float corePresence=.90*(1.-smoothstep(.72,1.,diagonal));
-    vec3 tint=mix(body.rgb,uCore,corePresence);
-    // Preserve the approved highlight's hue: neutral white made the previous
-    // version look grey/chalky instead of brightly illuminated colored glass.
-    float diffuseWhite=(.025+.76*pow(faceLight,1.7))*(.16+.84*front);
-    tint=mix(tint,uHighlight,diffuseWhite);
-
-    // Bright front facets, saturated middle facets, dark transparent echoes.
-    // Most perceived luminance comes from the face, not an external glow.
-    float face=shape*(.18+.46*front);
-    float faceDensity=mix(body.a,1.,faceLight*.55)*(1.-smoothstep(.92,1.,diagonal));
+    float lightDrift=sin(uTime*.14)*.012;
+    float cutA=exp(-pow((diagonal-.18-lightDrift)/.065,2.));
+    float cutB=exp(-pow((diagonal-.65-lightDrift)/.060,2.));
+    float faceLight=max(cutA,cutB*.94);
+    vec3 tint=mix(body.rgb,uCore,.94);
+    tint*=mix(.58,1.,1.-smoothstep(.72,1.,diagonal));
+    float diffuseWhite=faceLight*(.18+.80*front);
+    tint=mix(tint,mix(uHighlight,vec3(1.),.60),diffuseWhite);
+    float face=shape*(.12+.48*front+.34*faceLight);
+    float faceDensity=mix(body.a,1.,faceLight*.85)*(1.-smoothstep(.95,1.,diagonal));
     float rim=edge*(.64+.85*(1.-front));
     float surface=clamp(face*faceDensity+rim*body.a,0.,1.);
 
@@ -152,10 +149,10 @@ export const glassFragment=`
     // the front silhouette retains its original analytic pixel coverage AA.
     float glowWidth=pixel*(5.0+defocus*1.5)*uPixelRatio;
     float halo=exp(-pow(abs(d)/max(glowWidth,.00001),2.))*(1.-shape);
-    float glow=halo*(.025+faceLight*.14)*body.a;
+    float glow=halo*(.012+faceLight*.26)*body.a;
     float alpha=clamp(surface+glow,0.,1.)*vOptics.y*uOpacity;
     if(alpha<.0001)discard;
-    tint=mix(tint,uHighlight,clamp((rim*body.a*(.24+.5*faceLight)+glow)/max(surface+glow,.0001),0.,1.));
+    tint=mix(tint,uHighlight,clamp((rim*body.a*(.06+.80*faceLight)+glow)/max(surface+glow,.0001),0.,1.));
     tint*=vOptics.x;
     gl_FragColor=vec4(tint,alpha);
     #include <tonemapping_fragment>

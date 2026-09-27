@@ -8,10 +8,11 @@ test('final positions have four equally spaced surviving columns',()=>{for(const
 
 test('rotation precedes replacement and settles at opposite facing',()=>{
   const start=letterTurn(0),end=letterTurn(1);
-  assert.ok(start.yaw<0&&end.yaw>0&&end.yaw-start.yaw>1);
+  assert.ok(start.yaw<0&&end.yaw>0&&end.yaw-start.yaw>.9);
   assert.equal(letterTurn(.25).morph,0);
   assert.ok(letterTurn(.25).yaw>start.yaw);
   assert.equal(end.morph,1);
+  assert.ok(end.pitch<=-.5,"final view must show diagonal depth, not a level side view");
   let previous=start;
   for(let i=1;i<=100;i++){
     const next=letterTurn(i/100);
