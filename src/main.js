@@ -3,7 +3,7 @@ import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
 import './style.css';
 import {createControls} from './controls.js';
 import {LETTERS,clamp,smooth,timeline,localMorph,slotPosition,letterTurn} from './timeline.js';
-import {makeGlyphTexture,sampleGlyphField,glassVertex,glassFragment} from './glyphs.js';
+import {makeGlyphTexture,clearGlyphCache,sampleGlyphField,glassVertex,glassFragment} from './glyphs.js';
 import {createCinema} from './video.js';
 import {createAtmosphere} from './atmosphere.js';
 import {COLOR_FAMILIES,GLASS_LAYERS,GRADIENT_STOPS,GRADIENT_ANGLE,glassLayer} from './visual-system.js';
@@ -47,7 +47,7 @@ for(let i=0;i<LETTERS.length;i++){
   const optics=new THREE.InstancedBufferAttribute(new Float32Array(quality.layers*2),2).setUsage(THREE.DynamicDrawUsage);
   geo.setAttribute('layerOptics',optics);
   const palette=COLOR_FAMILIES[spec.family];
-  const uniforms={uEffect:{value:new THREE.Vector4(.8,.16,.45,1)},uFinish:{value:new THREE.Vector4(1,1,1,0)},uResolution:{value:new THREE.Vector2(innerWidth*quality.pixelRatio,innerHeight*quality.pixelRatio)},uTrailDistance:{value:.12},uGlyph:{value:makeGlyphTexture(spec.from,spec.to)},uCore:{value:new THREE.Color(palette.core)},uHighlight:{value:new THREE.Color(palette.highlight)},uMid:{value:new THREE.Color(palette.mid)},uDeep:{value:new THREE.Color(palette.deep)},uStops:{value:new THREE.Vector3(...GRADIENT_STOPS.slice(1,4))},uGradientDirection:{value:new THREE.Vector2(Math.sin(THREE.MathUtils.degToRad(GRADIENT_ANGLE)),-Math.cos(THREE.MathUtils.degToRad(GRADIENT_ANGLE)))},uBounds:{value:new THREE.Vector4((spec.from==='I'?58:194)/256,(spec.from==='-'?25:200)/256,((spec.to||spec.from)==='I'?58:194)/256,((spec.to||spec.from)==='-'?25:200)/256)},uMorph:{value:0},uOpacity:{value:1},uTime:{value:0},uPixelRatio:{value:quality.pixelRatio},uDepthBlur:{value:1.8}};
+  const uniforms={uLight:{value:new THREE.Vector4(0,.15,.7,0)},uLightPose:{value:new THREE.Vector3(.5,.5,Math.PI/4)},uMaterial:{value:new THREE.Vector4(1.5,.35,1,0)},uFillCurve:{value:new THREE.Vector3(1,1,1)},uEdgeCurve:{value:new THREE.Vector3(1,1,1)},uEffect:{value:new THREE.Vector4(.8,.16,.45,1)},uFinish:{value:new THREE.Vector4(1,1,1,0)},uResolution:{value:new THREE.Vector2(innerWidth*quality.pixelRatio,innerHeight*quality.pixelRatio)},uTrailDistance:{value:.12},uGlyph:{value:makeGlyphTexture(spec.from,spec.to)},uCore:{value:new THREE.Color(palette.core)},uHighlight:{value:new THREE.Color(palette.highlight)},uMid:{value:new THREE.Color(palette.mid)},uDeep:{value:new THREE.Color(palette.deep)},uStops:{value:new THREE.Vector3(...GRADIENT_STOPS.slice(1,4))},uGradientDirection:{value:new THREE.Vector2(Math.sin(THREE.MathUtils.degToRad(GRADIENT_ANGLE)),-Math.cos(THREE.MathUtils.degToRad(GRADIENT_ANGLE)))},uBounds:{value:new THREE.Vector4((spec.from==='I'?58:194)/256,(spec.from==='-'?25:200)/256,((spec.to||spec.from)==='I'?58:194)/256,((spec.to||spec.from)==='-'?25:200)/256)},uMorph:{value:0},uOpacity:{value:1},uTime:{value:0},uPixelRatio:{value:quality.pixelRatio},uDepthBlur:{value:1.8}};
   const material=new THREE.ShaderMaterial({vertexShader:glassVertex,fragmentShader:glassFragment,uniforms,transparent:true,depthWrite:false,side:THREE.DoubleSide});
   const mesh=new THREE.InstancedMesh(geo,material,quality.layers);mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);mesh.frustumCulled=false;
   mesh.userData.index=i;mesh.boundingSphere=new THREE.Sphere(new THREE.Vector3(),4);
@@ -56,11 +56,20 @@ for(let i=0;i<LETTERS.length;i++){
   const label=document.createElement('div');label.className='letter-label';label.innerHTML=`${spec.title}<small>${spec.subtitle}</small>`;labels.append(label);
   glyphs.push({spec,group,mesh,layers,optics,uniforms,hit,label,morph:0,opacity:1});
 }
-let activeLayers=10;
+let activeLayers=10,currentFont="design",fontRevision=0;
+const fontFamilies={design:"design",sans:"Arial, sans-serif",serif:"Georgia, serif",condensed:"Impact, sans-serif",mono:"Courier New, monospace",local:"DiffuseLocal"};
 createControls(settings=>{
  activeLayers=settings.layers;
+ const fontChanged=currentFont!==settings.font||fontRevision!==(settings.fontRevision||0);
+ if(fontChanged){clearGlyphCache();currentFont=settings.font;fontRevision=settings.fontRevision||0;}
  for(let i=0;i<glyphs.length;i++){
   const g=glyphs[i];g.mesh.count=activeLayers;
+  if(fontChanged){const old=g.uniforms.uGlyph.value;g.uniforms.uGlyph.value=makeGlyphTexture(g.spec.from,g.spec.to,fontFamilies[currentFont]);old.dispose();}
+  g.uniforms.uFillCurve.value.fromArray(settings.fillCurve);
+  g.uniforms.uEdgeCurve.value.fromArray(settings.edgeCurve);
+  g.uniforms.uLight.value.set(['dual','strip','ellipse','rectangle'].indexOf(settings.lightShape),settings.lightWidth,settings.lightHeight,0);
+  g.uniforms.uLightPose.value.set(settings.lightX,settings.lightY,settings.lightAngle*Math.PI/180);
+  g.uniforms.uMaterial.value.x=settings.ior;g.uniforms.uMaterial.value.y=settings.roughness;
   g.uniforms.uCore.value.set(settings.colors[i].core);
   g.uniforms.uHighlight.value.set(settings.colors[i].highlight);
   g.uniforms.uEffect.value.set(settings.strength,settings.softness,settings.solid,settings.outline);
@@ -119,6 +128,7 @@ function render(now){
     g.opacity=lettersOpacity*(g.spec.to===null?1-smooth(.05,1,g.morph):1);
     g.group.position.set(pos.x,pos.y,0);
     g.group.rotation.set(turn.pitch,turn.yaw,0);
+    g.uniforms.uMaterial.value.z=Math.abs(Math.cos(turn.pitch)*Math.cos(turn.yaw));
     g.hit.position.set(pos.x,pos.y,.55);g.hit.rotation.set(-.3,-.38,0);
     g.uniforms.uMorph.value=g.morph;g.uniforms.uOpacity.value=g.opacity;g.uniforms.uTime.value=t+i*.37;
     g.uniforms.uDepthBlur.value=.65*(1-timelineState.push);

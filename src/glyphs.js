@@ -19,13 +19,14 @@ function distance(mask, toInside) {
   return grid;
 }
 const cache=new Map();
-function glyphSdf(char) {
-  if(cache.has(char))return cache.get(char);
+function glyphSdf(char,font) {
+  const cacheKey=font+char;
+  if(cache.has(cacheKey))return cache.get(cacheKey);
   const canvas=document.createElement('canvas');canvas.width=canvas.height=SIZE;
   const ctx=canvas.getContext('2d',{willReadFrequently:true});
   ctx.fillStyle='#000';ctx.fillRect(0,0,SIZE,SIZE);ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='alphabetic';
-  ctx.font='700 245px Arial, sans-serif';
-  const form=LETTERFORMS[char];
+  ctx.font=`700 245px ${font==='design'?'Arial, sans-serif':font}`;
+  const form=font==='design'?LETTERFORMS[char]:null;
   if(form){
     const inkWidth=(char==='I'?58:194)*(SIZE/256),inkHeight=200*(SIZE/256);
     ctx.save();ctx.translate((SIZE-inkWidth)/2,(SIZE-inkHeight)/2);
@@ -46,10 +47,11 @@ function glyphSdf(char) {
     const signed=coverage>0&&coverage<1?coverage-.5:Math.sign(raw)*(Math.abs(raw)-.5);
     out[(SIZE-1-y)*SIZE+x]=Math.round(Math.min(1,Math.max(0,.5+signed/(SIZE*.2)))*65535);
   }
-  cache.set(char,out);return out;
+  cache.set(cacheKey,out);return out;
 }
-export function makeGlyphTexture(from,to) {
-  const a=glyphSdf(from),b=glyphSdf(to||from),data=new Uint8Array(SIZE*SIZE*4);
+export function clearGlyphCache(){cache.clear();}
+export function makeGlyphTexture(from,to,font='design') {
+  const a=glyphSdf(from,font),b=glyphSdf(to||from,font),data=new Uint8Array(SIZE*SIZE*4);
   // Two 16-bit fields in RG / BA. Linear filtering remains linear after decode.
   for(let i=0;i<a.length;i++){data[i*4]=a[i]>>>8;data[i*4+1]=a[i]&255;data[i*4+2]=b[i]>>>8;data[i*4+3]=b[i]&255;}
   const texture=new THREE.DataTexture(data,SIZE,SIZE,THREE.RGBAFormat);
@@ -85,11 +87,15 @@ export const glassVertex=`
 export const glassFragment=`
   uniform sampler2D uGlyph;
   uniform vec3 uCore,uHighlight,uMid,uDeep,uStops;
-  uniform vec4 uBounds,uEffect,uFinish;
+  uniform vec4 uBounds,uEffect,uFinish,uLight,uMaterial;
+  uniform vec3 uFillCurve,uEdgeCurve,uLightPose;
   uniform vec2 uGradientDirection;
   uniform float uMorph,uOpacity,uTime,uPixelRatio,uDepthBlur;
   varying vec2 vUv,vOptics,vTrailPixels; varying float vLayer;
 
+  float depthCurve(vec3 values,float t){
+    return t<=.5?mix(values.x,values.y,smoothstep(0.,.5,t)):mix(values.y,values.z,smoothstep(.5,1.,t));
+  }
   float field(vec2 uv){
     vec4 packed=texture2D(uGlyph,uv);
     vec2 unpack16=vec2(256./257.,1./257.);
@@ -132,17 +138,30 @@ export const glassFragment=`
     // Reference lighting: saturated glass between two broad white light cuts.
     // The cuts live on the rigid pane, so highlights never jitter with motion.
     float front=smoothstep(.48,1.,vLayer);
-    float lightDrift=sin(uTime*.14)*.012;
-    float cutA=exp(-pow((diagonal-.18-lightDrift)/uEffect.y,2.));
-    float cutB=exp(-pow((diagonal-.65-lightDrift)/(uEffect.y*.92),2.));
-    float faceLight=max(cutA,cutB*.94);
+    vec2 q=vec2(ink.x,1.-ink.y)-uLightPose.xy;
+    float c=cos(uLightPose.z),s=sin(uLightPose.z);
+    q=vec2(c*q.x+s*q.y,-s*q.x+c*q.y);
+    // Analytic area-light profiles: blur the boundary, not the whole letter.
+    float softness=uEffect.y+uMaterial.y*.16;
+    float width=max(.015,uLight.y),height=max(.015,uLight.z);
+    float lightDistance;
+    if(uLight.x<.5){lightDistance=abs(abs(q.x)-.25)-width*.5;}
+    else if(uLight.x<1.5){lightDistance=abs(q.x)-width*.5;}
+    else if(uLight.x<2.5){lightDistance=(length(q/vec2(width,height))-.5)*min(width,height);}
+    else{vec2 box=abs(q)-vec2(width,height)*.5;lightDistance=length(max(box,0.))+min(max(box.x,box.y),0.);}
+    if(uLight.x<1.5)lightDistance=max(lightDistance,abs(q.y)-height*.5);
+    float faceLight=1.-smoothstep(-softness*.25,softness,lightDistance);
+    // Schlick reflectance is an artistic IOR approximation; no scene refraction.
+    float f0=pow((uMaterial.x-1.)/(uMaterial.x+1.),2.);
+    float fresnel=f0+(1.-f0)*pow(1.-uMaterial.z,5.);
+    float reflection=clamp(fresnel*12.,0.,2.);
     vec3 tint=mix(body.rgb,uCore,.94);
     tint*=mix(.58,1.,1.-smoothstep(.72,1.,diagonal));
-    float diffuseWhite=clamp(faceLight*(.18+.80*front)*uEffect.x,0.,1.);
-    tint=mix(tint,mix(uHighlight,vec3(1.),.60),diffuseWhite);
-    float face=shape*mix(.025,1.,uEffect.z)*(.35+.65*front)*(1.+.45*faceLight*uEffect.x);
+    float diffuseWhite=clamp(faceLight*(.18+.80*front)*uEffect.x*(.5+reflection),0.,1.);
+    tint=mix(tint,uHighlight,diffuseWhite);
+    float face=shape*uEffect.z*depthCurve(uFillCurve,vLayer)*(.35+.65*front)*(1.+.45*faceLight*uEffect.x)*(1.-min(.3,reflection*.12));
     float faceDensity=mix(body.a,1.,faceLight*.85)*(1.-smoothstep(.95,1.,diagonal));
-    float rim=edge*(.64+.85*(1.-front))*uEffect.w;
+    float rim=edge*(.64+.85*(1.-front))*uEffect.w*depthCurve(uEdgeCurve,vLayer);
     float surface=clamp(face*faceDensity+rim*body.a,0.,1.);
 
     // Rear outlines remain readable. Only a restrained spill hugs lit cuts;

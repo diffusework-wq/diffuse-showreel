@@ -97,3 +97,12 @@ Browser visual verification: SHOW / REEL at progress 0.5242 has the revised diag
 Added accessible collapsible effect panel: individual letter core/highlight colors; global saturation, highlight strength/softness, 2–24 glass layers, transparent-to-solid fill, overall opacity, contour strength and halo. Preview scrubber stops at SHOW/REEL. Changes persist locally with validated bounded settings, reset and JSON export; they do not publish visitor changes. Broader soft highlights are the new defaults. Panel wheel/touch input is isolated from scene scroll.
 
 Validation: 16 tests pass, including malformed saved settings and every layer count. Browser verified 24-layer rendering, live softness/fill, preview scrub, scroll isolation (progress stays 0.53), reload persistence, reset and no console errors.
+
+
+## 2026-09-27 — Light shapes, depth curves and font editing
+
+Added dual-strip, strip, elliptical and rectangular analytic light profiles with width/height, position and angle. Highlight colors now directly use the selected color without forced neutral-white mixing. Material panel includes roughness and explicitly labeled approximate Schlick IOR (no physical scene refraction). Three-node draggable depth curves independently control fill and contours across rear/middle/front layers, with numeric alternatives and a 0/1/0 fill preset.
+
+Font selection rebuilds SDF textures and disposes prior GPU textures. Built-in system font choices persist. Local FontFace files remain in the current tab only, are never uploaded and are not embedded in JSON; reload falls back safely to design glyphs. Settings export now includes the new fields.
+
+Verification: 18 tests pass including curve interpolation bounds, preset migration and font validation. Browser verified ellipse selection, 0/1/0 fill, direct midpoint drag to 0.49, Georgia rendering, successful local Arial TTF loading, saved curve/Georgia after reload, reset, and no console errors. Production build passed.

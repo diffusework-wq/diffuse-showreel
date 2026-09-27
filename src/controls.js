@@ -1,30 +1,50 @@
 import {LETTERS} from './timeline.js';
+import {createCurveEditor} from './curve-editor.js';
 import {COLOR_FAMILIES} from './visual-system.js';
 const key='diffuse-glass-controls-v1';
-export const ranges={layers:[2,24,1],strength:[0,1.5,.01],softness:[.035,.3,.005],solid:[0,1,.01],opacity:[.1,1,.01],outline:[0,2,.01],glow:[0,3,.01],saturation:[0,1.8,.01]};
-export function defaults(){return {layers:10,strength:.8,softness:.16,solid:.45,opacity:1,outline:1,glow:1,saturation:1,colors:LETTERS.map(l=>({core:COLOR_FAMILIES[l.family].core,highlight:COLOR_FAMILIES[l.family].highlight}))};}
-export function sanitize(input){const out=defaults();for(const [k,[min,max]] of Object.entries(ranges)){if(Number.isFinite(input?.[k]))out[k]=Math.min(max,Math.max(min,input[k]));}out.layers=Math.round(out.layers);out.colors.forEach((c,i)=>{for(const k of ['core','highlight'])if(/^#[0-9a-f]{6}$/i.test(input?.colors?.[i]?.[k]))c[k]=input.colors[i][k];});return out;}
+export const ranges={layers:[2,24,1],strength:[0,1.5,.01],softness:[.035,.3,.005],solid:[0,1,.01],opacity:[.1,1,.01],outline:[0,2,.01],glow:[0,3,.01],saturation:[0,1.8,.01],ior:[1,2.5,.01],roughness:[0,1,.01],lightWidth:[.03,1,.01],lightHeight:[.03,1,.01],lightAngle:[-180,180,1],lightX:[0,1,.01],lightY:[0,1,.01]};
+export function defaults(){return {layers:10,strength:.8,softness:.16,solid:.45,opacity:1,outline:1,glow:1,saturation:1,ior:1.5,roughness:.35,lightWidth:.15,lightHeight:.7,lightAngle:45,lightX:.5,lightY:.5,lightShape:'dual',font:'design',fillCurve:[1,1,1],edgeCurve:[1,1,1],colors:LETTERS.map(l=>({core:COLOR_FAMILIES[l.family].core,highlight:COLOR_FAMILIES[l.family].highlight}))};}
+export function sanitize(input){const out=defaults();for(const [k,[min,max]] of Object.entries(ranges)){if(Number.isFinite(input?.[k]))out[k]=Math.min(max,Math.max(min,input[k]));}out.layers=Math.round(out.layers);for(const k of ['fillCurve','edgeCurve']){out[k]=out[k].map((v,i)=>Number.isFinite(input?.[k]?.[i])?Math.max(0,Math.min(k==='edgeCurve'?2:1,input[k][i])):v);}if(['dual','strip','ellipse','rectangle'].includes(input?.lightShape))out.lightShape=input.lightShape;if(['design','sans','serif','condensed','mono'].includes(input?.font))out.font=input.font;out.colors.forEach((c,i)=>{for(const k of ['core','highlight'])if(/^#[0-9a-f]{6}$/i.test(input?.colors?.[i]?.[k]))c[k]=input.colors[i][k];});return out;}
 export function createControls(onChange,onScrub){
+ let uploadedFace=null;
  let settings=defaults();try{settings=sanitize(JSON.parse(localStorage.getItem(key)));}catch{}
  const toggle=document.createElement('button');toggle.id='controls-toggle';toggle.textContent='調整玻璃';toggle.setAttribute('aria-expanded','false');toggle.setAttribute('aria-controls','glass-controls');document.body.append(toggle);
  const panel=document.createElement('aside');panel.id='glass-controls';panel.hidden=true;panel.setAttribute('aria-label','玻璃效果控制');
- panel.innerHTML=`<header><div><small>DIFFUSE / EFFECT CONTROLS</small><h2>玻璃效果</h2></div><button type="button" id="controls-close" aria-label="關閉調整面板">×</button></header><p>即時預覽 · 設定儲存在這台瀏覽器</p><label>預覽段落<input aria-label="預覽段落" id="preview-scrub" type="range" min="0" max="0.55" step="0.005" value="0"></label><div class="preview-ends"><span>DIFFUSE</span><span>SHOW / REEL</span></div><fieldset><legend>色彩 / COLOR</legend><label>選擇字母<select id="letter-select" aria-label="選擇字母">${LETTERS.map((l,i)=>`<option value="${i}">${i+1} · ${l.from} → ${l.to||'消失'}</option>`).join('')}</select></label><div class="color-row"><label>本色<input type="color" id="core-color" aria-label="字母本色"></label><label>高光色<input type="color" id="highlight-color" aria-label="字母高光色"></label></div></fieldset><div id="effect-ranges"></div><div class="control-actions"><button id="reset-glass">重設全部</button><button id="export-glass">匯出設定</button></div><p id="control-status" role="status">本機調整不會變更其他訪客看到的版本。</p>`;
+ panel.innerHTML=`<header><div><small>DIFFUSE / EFFECT CONTROLS</small><h2>玻璃效果</h2></div><button type="button" id="controls-close" aria-label="關閉調整面板">×</button></header><p>即時預覽 · 設定儲存在這台瀏覽器</p><label>預覽段落<input aria-label="預覽段落" id="preview-scrub" type="range" min="0" max="0.55" step="0.005" value="0"></label><div class="preview-ends"><span>DIFFUSE</span><span>SHOW / REEL</span></div><fieldset><legend>色彩 / COLOR</legend><label>選擇字母<select id="letter-select" aria-label="選擇字母">${LETTERS.map((l,i)=>`<option value="${i}">${i+1} · ${l.from} → ${l.to||'消失'}</option>`).join('')}</select></label><div class="color-row"><label>本色<input type="color" id="core-color" aria-label="字母本色"></label><label>高光色<input type="color" id="highlight-color" aria-label="字母高光色"></label></div></fieldset><details open><summary>燈板 / LIGHT</summary><label>燈板形狀<select id="light-shape" aria-label="燈板形狀"><option value="dual">雙條燈板</option><option value="strip">單條燈板</option><option value="ellipse">橢圓柔光箱</option><option value="rectangle">矩形柔光箱</option></select></label><div id="light-ranges"></div><p>高光顏色沿用上方所選字母的「高光色」。</p></details><details open><summary>材質 / MATERIAL</summary><div id="effect-ranges"></div><p>IOR 為反射／透光近似效果，非物理折射模擬。</p></details><details open><summary>深度曲線 / CURVES</summary><p>左 → 右：後層 → 中層 → 前層。拖曳節點或調整數值；曲線乘上材質的實心程度／輪廓強度。</p><div id="fill-curve"></div><button id="pulse-fill">透明線條 → 實心 → 透明線條</button><div id="edge-curve"></div></details><details><summary>字體 / TYPE</summary><label>字體選擇<select id="font-select" aria-label="字體選擇"><option value="design">DIFFUSE 幾何字形</option><option value="sans">Arial · 無襯線</option><option value="serif">Georgia · 襯線</option><option value="condensed">Impact · 窄黑體</option><option value="mono">Courier New · 等寬</option></select></label><label>載入本機字體<input id="font-file" type="file" accept=".ttf,.otf,.woff,.woff2" aria-label="載入本機字體"></label><p id="font-status" role="status">本機字體只在此分頁使用，不會上傳。重新開啟需再次載入；JSON 不包含字體檔。</p></details><div class="control-actions"><button id="reset-glass">重設全部</button><button id="export-glass">匯出設定</button></div><p id="control-status" role="status">本機調整不會變更其他訪客看到的版本。</p>`;
  document.body.append(panel);
- const names={layers:'薄片 / 線條層數',strength:'高光強度',softness:'高光柔和度',solid:'透明 → 實心',opacity:'整體不透明度',outline:'輪廓線強度',glow:'邊緣光暈',saturation:'色彩飽和度'};
+ const names={layers:'薄片 / 線條層數',strength:'高光強度',softness:'高光柔和度',solid:'透明 → 實心',opacity:'整體不透明度',outline:'輪廓線強度',glow:'邊緣光暈',saturation:'色彩飽和度',ior:'IOR 折射率（近似）',roughness:'材質粗糙度',lightWidth:'燈板寬度',lightHeight:'燈板高度',lightAngle:'燈板角度',lightX:'燈板水平位置',lightY:'燈板垂直位置'};
  const container=panel.querySelector('#effect-ranges');
- for(const [k,[min,max,step]] of Object.entries(ranges)){const label=document.createElement('label');label.innerHTML=`<span>${names[k]}<output id="value-${k}"></output></span><input aria-label="${names[k]}" data-setting="${k}" type="range" min="${min}" max="${max}" step="${step}">`;container.append(label);}
- const select=panel.querySelector('select');
- function refresh(){for(const k of Object.keys(ranges)){panel.querySelector(`[data-setting="${k}"]`).value=settings[k];panel.querySelector(`#value-${k}`).textContent=k==='layers'?settings[k]:settings[k].toFixed(2);}for(const k of ['core','highlight'])panel.querySelector(`#${k}-color`).value=settings.colors[+select.value][k];}
+ for(const [k,[min,max,step]] of Object.entries(ranges)){const label=document.createElement('label');label.innerHTML=`<span>${names[k]}<output id="value-${k}"></output></span><input aria-label="${names[k]}" data-setting="${k}" type="range" min="${min}" max="${max}" step="${step}">`;(k.startsWith('light')?panel.querySelector('#light-ranges'):container).append(label);}
+ const select=panel.querySelector('#letter-select');
+ const fillEditor=createCurveEditor(panel.querySelector('#fill-curve'),'實心程度曲線',1,values=>{settings.fillCurve=values;apply();});
+ const edgeEditor=createCurveEditor(panel.querySelector('#edge-curve'),'輪廓強度曲線',2,values=>{settings.edgeCurve=values;apply();});
+ function refresh(){fillEditor.update(settings.fillCurve);edgeEditor.update(settings.edgeCurve);panel.querySelector('#light-shape').value=settings.lightShape;panel.querySelector('#font-select').value=settings.font;for(const k of Object.keys(ranges)){panel.querySelector(`[data-setting="${k}"]`).value=settings[k];panel.querySelector(`#value-${k}`).textContent=k==='layers'?settings[k]:settings[k].toFixed(2);}for(const k of ['core','highlight'])panel.querySelector(`#${k}-color`).value=settings.colors[+select.value][k];}
  function apply(){refresh();onChange(settings);try{localStorage.setItem(key,JSON.stringify(settings));}catch{panel.querySelector('#control-status').textContent='設定目前僅保留於此頁；可匯出保存。';}}
  panel.addEventListener('input',e=>{const k=e.target.dataset.setting;if(k){settings[k]=+e.target.value;apply();}});
  for(const k of ['core','highlight'])panel.querySelector(`#${k}-color`).addEventListener('input',e=>{settings.colors[+select.value][k]=e.target.value;apply();});
+ panel.querySelector('#light-shape').addEventListener('change',e=>{settings.lightShape=e.target.value;apply();});
+ panel.querySelector('#pulse-fill').onclick=()=>{settings.fillCurve=[0,1,0];settings.solid=1;apply();};
+ panel.querySelector('#font-select').addEventListener('change',e=>{settings.font=e.target.value;apply();});
+ panel.querySelector('#font-file').addEventListener('change',async e=>{
+  const file=e.target.files[0];if(!file)return;
+  const status=panel.querySelector('#font-status');
+  if(file.size>15*1024*1024){status.textContent='請選擇 15 MB 以下的字體檔。';return;}
+  status.textContent='正在載入字體…';
+  try{
+   const face=new FontFace('DiffuseLocal',await file.arrayBuffer(),{weight:'700'});await face.load();
+   if(uploadedFace)document.fonts.delete(uploadedFace);document.fonts.add(face);uploadedFace=face;
+   const menu=panel.querySelector('#font-select');let option=menu.querySelector('[value="local"]');if(!option){option=document.createElement('option');option.value='local';menu.append(option);}option.textContent=file.name;
+   settings.font='local';settings.fontRevision=(settings.fontRevision||0)+1;apply();
+   status.textContent=`已載入 ${file.name}。只供此分頁使用；不會上傳，重新開啟需再次載入。`;
+  }catch{status.textContent='無法讀取此字體，請選擇有效的 TTF、OTF、WOFF 或 WOFF2 檔。';}
+ });
  select.addEventListener('change',refresh);
  panel.querySelector('#preview-scrub').addEventListener('input',e=>onScrub(+e.target.value));
  function open(value){panel.hidden=!value;toggle.setAttribute('aria-expanded',String(value));if(value)panel.querySelector('#controls-close').focus();else toggle.focus();}
  toggle.onclick=()=>open(panel.hidden);panel.querySelector('#controls-close').onclick=()=>open(false);
  panel.addEventListener('keydown',e=>{if(e.key==='Escape')open(false);});
  panel.querySelector('#reset-glass').onclick=()=>{settings=defaults();apply();};
- panel.querySelector('#export-glass').onclick=()=>{const url=URL.createObjectURL(new Blob([JSON.stringify({version:1,...settings},null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='diffuse-glass-settings.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+ panel.querySelector('#export-glass').onclick=()=>{const url=URL.createObjectURL(new Blob([JSON.stringify({version:2,...settings},null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='diffuse-glass-settings.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
  for(const event of ['wheel','touchstart','touchmove'])panel.addEventListener(event,e=>e.stopPropagation(),{passive:true});
  refresh();onChange(settings);return {panel};
 }
