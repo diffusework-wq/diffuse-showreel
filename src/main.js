@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
 import './style.css';
+import {createHoverGlow,makeHoverGlow} from './hover-glow.js';
 import {createControls} from './controls.js';
 import {LETTERS,clamp,smooth,timeline,localMorph,slotPosition,letterTurn} from './timeline.js';
 import {makeGlyphTexture,clearGlyphCache,sampleGlyphField,glassVertex,glassFragment} from './glyphs.js';
@@ -54,9 +55,10 @@ for(let i=0;i<LETTERS.length;i++){
   const group=new THREE.Group();group.add(mesh);root.add(group);
   const hit=new THREE.Mesh(hitGeometry,hitMaterial);hit.userData.index=i;root.add(hit);
   const label=document.createElement('div');label.className='letter-label';label.innerHTML=`${spec.title}<small>${spec.subtitle}</small>`;labels.append(label);
-  glyphs.push({spec,group,mesh,layers,optics,uniforms,hit,label,morph:0,opacity:1});
+  const hoverGlow=createHoverGlow();group.add(hoverGlow);
+  glyphs.push({hoverGlow,glowAmount:0,spec,group,mesh,layers,optics,uniforms,hit,label,morph:0,opacity:1});
 }
-let orientation=null;
+let orientation=null,glowTimer=null,glowKey="";
 const pivotOffset=new THREE.Vector3();
 let activeLayers=10,currentFont="design",fontRevision=0;
 const fontFamilies={design:"design",sans:"Arial, sans-serif",serif:"Georgia, serif",condensed:"Impact, sans-serif",mono:"Courier New, monospace",local:"DiffuseLocal"};
@@ -76,6 +78,11 @@ createControls(settings=>{
   g.uniforms.uHighlight.value.set(settings.colors[i].highlight);
   g.uniforms.uEffect.value.set(settings.strength,settings.softness,settings.solid,settings.outline);
   g.uniforms.uFinish.value.set(settings.opacity,settings.glow,settings.saturation,0);
+ }
+ const nextGlowKey=[settings.hoverSpread,settings.hoverBlur,currentFont,fontRevision].join(':');
+ if(nextGlowKey!==glowKey){
+  glowKey=nextGlowKey;clearTimeout(glowTimer);
+  glowTimer=setTimeout(()=>{for(const g of glyphs){const uniform=g.hoverGlow.material.uniforms.mask;const old=uniform.value;uniform.value=makeHoverGlow(g.uniforms.uGlyph.value.image,settings.hoverSpread,settings.hoverBlur);old?.dispose();}},100);
  }
 },progress=>{state.target=progress;});
 const cinema=createCinema();
@@ -107,7 +114,7 @@ function snapshot(){
   const durations=state.frames.filter(x=>x<1000),sorted=[...durations].sort((a,b)=>a-b);
   const mean=durations.reduce((a,b)=>a+b,0)/Math.max(durations.length,1);
   const phases=Object.fromEntries(Object.entries(state.phaseFrames).map(([key,values])=>{const s=[...values].sort((a,b)=>a-b);return [key,{samples:values.length,fps:1000/(values.reduce((a,b)=>a+b,0)/values.length),p95ms:s[Math.floor(s.length*.95)]}];}));
-  return {phase:state.phase,progress:+state.progress.toFixed(4),target:+state.target.toFixed(4),hover:state.hover,viewport:{width:innerWidth,height:innerHeight,dpr:devicePixelRatio,renderDpr:renderer.getPixelRatio()},userAgent:navigator.userAgent,performance:{samples:durations.length,fps:+(1000/mean).toFixed(1),p95ms:sorted[Math.floor(sorted.length*.95)]||0,phases},renderer:{drawCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles},letters:glyphs.map((g,i)=>({index:i,from:g.spec.from,to:g.spec.to,morph:+g.morph.toFixed(3),opacity:+g.opacity.toFixed(3),yaw:+g.group.rotation.y.toFixed(3),center:{x:+((g.hit.position.clone().project(camera).x*.5+.5)*innerWidth).toFixed(1),y:+((-g.hit.position.clone().project(camera).y*.5+.5)*innerHeight).toFixed(1)}})),video:{...cinema.data},atmosphere:atmosphere.data,events:state.events,errors:state.errors};
+  return {phase:state.phase,progress:+state.progress.toFixed(4),target:+state.target.toFixed(4),hover:state.hover,viewport:{width:innerWidth,height:innerHeight,dpr:devicePixelRatio,renderDpr:renderer.getPixelRatio()},userAgent:navigator.userAgent,performance:{samples:durations.length,fps:+(1000/mean).toFixed(1),p95ms:sorted[Math.floor(sorted.length*.95)]||0,phases},renderer:{drawCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles},letters:glyphs.map((g,i)=>({index:i,from:g.spec.from,to:g.spec.to,morph:+g.morph.toFixed(3),opacity:+g.opacity.toFixed(3),yaw:+g.group.rotation.y.toFixed(3),hoverGlow:+g.glowAmount.toFixed(3),center:{x:+((g.hit.position.clone().project(camera).x*.5+.5)*innerWidth).toFixed(1),y:+((-g.hit.position.clone().project(camera).y*.5+.5)*innerHeight).toFixed(1)}})),video:{...cinema.data},atmosphere:atmosphere.data,events:state.events,errors:state.errors};
 }
 // Read-only diagnostics support verification without synthetic interaction shortcuts.
 Object.defineProperty(window,'__SHOWREEL__',{value:{snapshot},writable:false});
@@ -125,6 +132,8 @@ function render(now){
     const g=glyphs[i],pos=slotPosition(i,timelineState.morph,camera.aspect);
     state.hoverAmounts[i]+=(Number(state.hover===i)-state.hoverAmounts[i])*(1-Math.exp(-7*dt));
     const hover=state.hoverAmounts[i];
+    const glowTarget=Number(state.hover===i);
+    g.glowAmount+=(glowTarget-g.glowAmount)*(1-Math.exp(-(glowTarget?4:2.2)*dt));
     const turn=letterTurn(localMorph(timelineState.morph,hover));
     g.morph=turn.morph;
     g.opacity=lettersOpacity*(g.spec.to===null?1-smooth(.05,1,g.morph):1);
@@ -138,6 +147,10 @@ function render(now){
     g.group.position.set(pos.x-pivotOffset.x,pos.y-pivotOffset.y,pivotZ-pivotOffset.z);
     g.uniforms.uMaterial.value.z=Math.abs(Math.cos(g.group.rotation.x)*Math.cos(g.group.rotation.y));
     g.hit.position.set(pos.x,pos.y,.55);g.hit.rotation.set(-.3,-.38,0);
+    const glowUniforms=g.hoverGlow.material.uniforms;
+    glowUniforms.color.value.copy(g.uniforms.uCore.value).lerp(g.uniforms.uHighlight.value,.25);
+    glowUniforms.amount.value=g.glowAmount*orientation.hoverStrength*g.opacity;
+    glowUniforms.morph.value=g.morph;g.hoverGlow.visible=!!glowUniforms.mask.value&&glowUniforms.amount.value>.0001;
     g.uniforms.uMorph.value=g.morph;g.uniforms.uOpacity.value=g.opacity;g.uniforms.uTime.value=t+i*.37;
     g.uniforms.uDepthBlur.value=.65*(1-timelineState.push);
     g.uniforms.uTrailDistance.value=depth*.0288*.8;

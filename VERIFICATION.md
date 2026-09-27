@@ -136,3 +136,9 @@ Verification: 19 tests pass and build passes. Browser verified count 2 to 3, sav
 The reported W/E and R/L notches came from interpolated signed-distance fields, not simply pixel aliasing. Default now shades complete source and target glyphs independently, then crossfades premultiplied linear-light results. Added rear-to-front layer replacement; original SDF morph is an explicitly labeled optional mode. Endpoint rendering skips the extra glyph evaluation. Raycast coverage follows the selected mode; previous material/font/axis settings are retained.
 
 Verification: 20 tests pass, production build passes. Browser verified crossfade and layer replacement at progress 0.2773, intact W/E and R/L contours rather than interpolated dents, no console errors, approximately 60 FPS on the current preview.
+
+### Hover diffusion — 2026-09-27
+- 21 automated tests pass; production build passes.
+- Local browser: letter hover activates colored glow; pointer exit decays glow.
+- Spread 10 to 30, blur 18 to 24 and strength .12 to .25 visibly broaden/soften the halo without changing glass contours.
+- No browser console errors during verification.
