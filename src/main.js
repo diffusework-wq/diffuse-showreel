@@ -1,3 +1,4 @@
+import {createBackground,createMist} from './diffusion.js';
 import * as THREE from 'three';
 import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
 import './style.css';
@@ -28,6 +29,7 @@ const glassTarget=new THREE.WebGLRenderTarget(1,1,{type:renderer.extensions.has(
 const outputPass=new OutputPass();outputPass.renderToScreen=true;
 renderer.info.autoReset=false;
 const scene=new THREE.Scene();
+const background=createBackground();scene.add(background);
 const camera=new THREE.PerspectiveCamera(16,innerWidth/innerHeight,.1,160);
 let baseZ=18;
 const root=new THREE.Group();scene.add(root);
@@ -56,7 +58,8 @@ for(let i=0;i<LETTERS.length;i++){
   const hit=new THREE.Mesh(hitGeometry,hitMaterial);hit.userData.index=i;root.add(hit);
   const label=document.createElement('div');label.className='letter-label';label.innerHTML=`${spec.title}<small>${spec.subtitle}</small>`;labels.append(label);
   const hoverGlow=createHoverGlow();group.add(hoverGlow);
-  glyphs.push({hoverGlow,glowAmount:0,spec,group,mesh,layers,optics,uniforms,hit,label,morph:0,opacity:1});
+  const mist=createMist();root.add(mist);
+  glyphs.push({mist,mistAmount:0,hoverGlow,glowAmount:0,spec,group,mesh,layers,optics,uniforms,hit,label,morph:0,opacity:1});
 }
 let orientation=null,glowTimer=null,glowKey="";
 const pivotOffset=new THREE.Vector3();
@@ -64,6 +67,7 @@ let activeLayers=10,currentFont="design",fontRevision=0;
 const fontFamilies={design:"design",sans:"Arial, sans-serif",serif:"Georgia, serif",condensed:"Impact, sans-serif",mono:"Courier New, monospace",local:"DiffuseLocal"};
 createControls(settings=>{
  activeLayers=settings.layers;orientation=settings;
+ const bg=background.material.uniforms;bg.colorA.value.set(settings.bgColorA);bg.colorB.value.set(settings.bgColorB);bg.strength.value=settings.bgStrength;bg.range.value=settings.bgRange;bg.center.value.set(settings.bgX,1-settings.bgY);bg.angle.value=settings.bgAngle*Math.PI/180;
  const fontChanged=currentFont!==settings.font||fontRevision!==(settings.fontRevision||0);
  if(fontChanged){clearGlyphCache();currentFont=settings.font;fontRevision=settings.fontRevision||0;}
  for(let i=0;i<glyphs.length;i++){
@@ -82,7 +86,7 @@ createControls(settings=>{
  const nextGlowKey=[settings.hoverSpread,settings.hoverBlur,currentFont,fontRevision].join(':');
  if(nextGlowKey!==glowKey){
   glowKey=nextGlowKey;clearTimeout(glowTimer);
-  glowTimer=setTimeout(()=>{for(const g of glyphs){const uniform=g.hoverGlow.material.uniforms.mask;const old=uniform.value;uniform.value=makeHoverGlow(g.uniforms.uGlyph.value.image,settings.hoverSpread,settings.hoverBlur);old?.dispose();}},100);
+  glowTimer=setTimeout(()=>{for(const g of glyphs){const uniform=g.hoverGlow.material.uniforms.mask;const old=uniform.value;uniform.value=makeHoverGlow(g.uniforms.uGlyph.value.image,settings.hoverSpread,settings.hoverBlur);old?.dispose();const mistMask=g.mist.material.uniforms.mask;mistMask.value?.dispose();mistMask.value=makeHoverGlow(g.uniforms.uGlyph.value.image,8,8);}},100);
  }
 },progress=>{state.target=progress;});
 const cinema=createCinema();
@@ -134,6 +138,7 @@ function render(now){
     const hover=state.hoverAmounts[i];
     const glowTarget=Number(state.hover===i);
     g.glowAmount+=(glowTarget-g.glowAmount)*(1-Math.exp(-(glowTarget?4:2.2)*dt));
+    g.mistAmount+=(glowTarget-g.mistAmount)*(1-Math.exp(-dt*(glowTarget?3*orientation.mistSpeed:3/orientation.mistDecay)));
     const turn=letterTurn(localMorph(timelineState.morph,hover));
     g.morph=turn.morph;
     g.opacity=lettersOpacity*(g.spec.to===null?1-smooth(.05,1,g.morph):1);
@@ -151,6 +156,13 @@ function render(now){
     glowUniforms.color.value.copy(g.uniforms.uCore.value).lerp(g.uniforms.uHighlight.value,.25);
     glowUniforms.amount.value=g.glowAmount*orientation.hoverStrength*g.opacity;
     glowUniforms.morph.value=g.morph;g.hoverGlow.visible=!!glowUniforms.mask.value&&glowUniforms.amount.value>.0001;
+    const mist=g.mist.material.uniforms;
+    g.mist.position.set(pos.x,pos.y,-1);g.mist.quaternion.copy(camera.quaternion);
+    mist.color.value.copy(g.uniforms.uCore.value);
+    mist.amount.value=g.mistAmount*orientation.mistStrength*g.opacity;mist.morph.value=g.morph;
+    mist.spread.value=1+(orientation.mistRange-1)*g.mistAmount;mist.softness.value=orientation.mistBlur;mist.time.value=t;
+    const trailAngle=orientation.trailAngle*Math.PI/180;mist.direction.value.set(Math.cos(trailAngle),Math.sin(trailAngle)).multiplyScalar(orientation.trailLength*.22);
+    g.mist.visible=!!mist.mask.value&&mist.amount.value>.001;
     g.uniforms.uMorph.value=g.morph;g.uniforms.uOpacity.value=g.opacity;g.uniforms.uTime.value=t+i*.37;
     g.uniforms.uDepthBlur.value=.65*(1-timelineState.push);
     g.uniforms.uTrailDistance.value=depth*.0288*.8;
@@ -194,6 +206,7 @@ function render(now){
   chapter.textContent=timelineState.chapter;
   instruction.textContent=reveal>.6?'SCROLL UP TO RETURN':timelineState.morph>.9?'SCROLL INTO THE FILM':'HOVER TO DISCOVER · SCROLL TO EXPLORE';
   fill.style.height=`${state.progress*100}%`;progressLabel.textContent=`${String(Math.round(state.progress*100)).padStart(2,'0')} / 100`;
+  background.material.uniforms.aspect.value=camera.aspect;
   renderer.info.reset();renderer.setRenderTarget(glassTarget);renderer.render(scene,camera);
   outputPass.render(renderer,null,glassTarget);
   if(t>4&&!document.hidden&&actualDt<1000){state.frames.push(actualDt);if(state.frames.length>1800)state.frames.shift();const list=state.phaseFrames[state.phase]??=[];list.push(actualDt);if(list.length>1800)list.shift();}

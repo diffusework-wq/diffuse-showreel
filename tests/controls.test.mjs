@@ -21,3 +21,9 @@ test('light count and independent endpoint transforms survive validation',()=>{
 });
 test('legacy settings default to contour-preserving crossfade and alternatives persist',()=>{assert.equal(sanitize({}).transition,'crossfade');assert.equal(sanitize({transition:'layers'}).transition,'layers');assert.equal(sanitize({transition:'bad'}).transition,'crossfade');});
 test('hover diffuse controls migrate safely and stay within padded texture bounds',()=>{const d=sanitize({});assert.equal(d.hoverSpread,10);assert.equal(d.hoverBlur,18);assert.equal(d.hoverStrength,.12);const s=sanitize({hoverSpread:999,hoverBlur:999,hoverStrength:-1});assert.equal(s.hoverSpread,40);assert.equal(s.hoverBlur,24);assert.equal(s.hoverStrength,0);assert.ok(s.hoverSpread+3*s.hoverBlur<128);});
+
+test('background and diffusion presets preserve colors and bound rates',()=>{
+ const saved=sanitize({bgColorA:'#ff0088',bgColorB:'invalid',mistDecay:0,mistRange:99,bgStrength:0});
+ assert.equal(saved.bgColorA,'#ff0088');assert.equal(saved.bgColorB,defaults().bgColorB);
+ assert.equal(saved.mistDecay,.2);assert.equal(saved.mistRange,4);assert.equal(saved.bgStrength,0);
+});

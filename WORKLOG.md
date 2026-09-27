@@ -126,3 +126,9 @@ Verification: 20 tests pass, production build passes. Browser verified crossfade
 Added a separate, padded and Gaussian-blurred glyph glow behind each hovered letter. The glow inherits letter color, follows source/target changes and rotations, eases in and fades out. New persisted controls expose spread distance, blur dissipation and strength; conservative defaults keep it subtle without blurring the glass contours. Texture regeneration is debounced and old textures are disposed.
 
 Verification: 21 tests pass, production build passes. Browser verified hover activation, fade-out, all three controls and visibly broader/softer glow at increased settings. No console errors.
+
+## 2026-09-28 — Additional diffusion and independent background gradient
+
+Preserved small hover glow. Added an independently masked, billboarded additive glyph diffusion layer with directional multi-sample streaks, animated expansion and decay, and subtle distortion. This is an artistic glyph-mask effect, not physical illumination or temporal motion blur. Added independent two-color background wash with intensity, range, position and angle controls. Settings persist/export and migrate older presets. Both effects can be disabled with strength zero.
+
+Verification: 22 tests and production build pass. Browser confirmed large hover color spread, editable background color and intensity, scrolling and no console errors. Background uses the same linear compositing/output pass and fades with the scene at cinema entry.
