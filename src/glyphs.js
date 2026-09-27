@@ -85,7 +85,7 @@ export const glassVertex=`
 export const glassFragment=`
   uniform sampler2D uGlyph;
   uniform vec3 uCore,uHighlight,uMid,uDeep,uStops;
-  uniform vec4 uBounds;
+  uniform vec4 uBounds,uEffect,uFinish;
   uniform vec2 uGradientDirection;
   uniform float uMorph,uOpacity,uTime,uPixelRatio,uDepthBlur;
   varying vec2 vUv,vOptics,vTrailPixels; varying float vLayer;
@@ -133,26 +133,28 @@ export const glassFragment=`
     // The cuts live on the rigid pane, so highlights never jitter with motion.
     float front=smoothstep(.48,1.,vLayer);
     float lightDrift=sin(uTime*.14)*.012;
-    float cutA=exp(-pow((diagonal-.18-lightDrift)/.065,2.));
-    float cutB=exp(-pow((diagonal-.65-lightDrift)/.060,2.));
+    float cutA=exp(-pow((diagonal-.18-lightDrift)/uEffect.y,2.));
+    float cutB=exp(-pow((diagonal-.65-lightDrift)/(uEffect.y*.92),2.));
     float faceLight=max(cutA,cutB*.94);
     vec3 tint=mix(body.rgb,uCore,.94);
     tint*=mix(.58,1.,1.-smoothstep(.72,1.,diagonal));
-    float diffuseWhite=faceLight*(.18+.80*front);
+    float diffuseWhite=clamp(faceLight*(.18+.80*front)*uEffect.x,0.,1.);
     tint=mix(tint,mix(uHighlight,vec3(1.),.60),diffuseWhite);
-    float face=shape*(.12+.48*front+.34*faceLight);
+    float face=shape*mix(.025,1.,uEffect.z)*(.35+.65*front)*(1.+.45*faceLight*uEffect.x);
     float faceDensity=mix(body.a,1.,faceLight*.85)*(1.-smoothstep(.95,1.,diagonal));
-    float rim=edge*(.64+.85*(1.-front));
+    float rim=edge*(.64+.85*(1.-front))*uEffect.w;
     float surface=clamp(face*faceDensity+rim*body.a,0.,1.);
 
     // Rear outlines remain readable. Only a restrained spill hugs lit cuts;
     // the front silhouette retains its original analytic pixel coverage AA.
     float glowWidth=pixel*(5.0+defocus*1.5)*uPixelRatio;
     float halo=exp(-pow(abs(d)/max(glowWidth,.00001),2.))*(1.-shape);
-    float glow=halo*(.012+faceLight*.26)*body.a;
-    float alpha=clamp(surface+glow,0.,1.)*vOptics.y*uOpacity;
+    float glow=halo*(.012+faceLight*.26*uEffect.x)*body.a*uFinish.y;
+    float alpha=clamp(surface+glow,0.,1.)*vOptics.y*uOpacity*uFinish.x;
     if(alpha<.0001)discard;
     tint=mix(tint,uHighlight,clamp((rim*body.a*(.06+.80*faceLight)+glow)/max(surface+glow,.0001),0.,1.));
+    float luminance=dot(tint,vec3(.2126,.7152,.0722));
+    tint=max(vec3(0.),mix(vec3(luminance),tint,uFinish.z));
     tint*=vOptics.x;
     gl_FragColor=vec4(tint,alpha);
     #include <tonemapping_fragment>

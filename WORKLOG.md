@@ -90,3 +90,10 @@ Validation: 14 tests pass; production build passes. Browser checks confirm D to 
 Supersedes the previous shallow final tilt: final yaw +0.55 rad, pitch -0.50 rad. Narrow 16-degree camera FOV and proportionally increased distance reduce inconsistent perspective across columns while preserving framing and the camera-push timeline. Glass depth projects diagonally down-left. Replace broad pastel face illumination with two localized white transmission cuts and saturated core areas; reduce rear defocus and trail length to retain thin contours.
 
 Browser visual verification: SHOW / REEL at progress 0.5242 has the revised diagonal depth and stronger color/white contrast, no console errors.
+
+
+## 2026-09-27 — Live glass effect controls
+
+Added accessible collapsible effect panel: individual letter core/highlight colors; global saturation, highlight strength/softness, 2–24 glass layers, transparent-to-solid fill, overall opacity, contour strength and halo. Preview scrubber stops at SHOW/REEL. Changes persist locally with validated bounded settings, reset and JSON export; they do not publish visitor changes. Broader soft highlights are the new defaults. Panel wheel/touch input is isolated from scene scroll.
+
+Validation: 16 tests pass, including malformed saved settings and every layer count. Browser verified 24-layer rendering, live softness/fill, preview scrub, scroll isolation (progress stays 0.53), reload persistence, reset and no console errors.

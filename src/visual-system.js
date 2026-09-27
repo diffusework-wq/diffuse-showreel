@@ -23,11 +23,11 @@ export function depthOptics(position) {
   return {brightness:DEPTH_BRIGHTNESS[a]*(1-t)+DEPTH_BRIGHTNESS[b]*t,opacity:DEPTH_OPACITY[a]*(1-t)+DEPTH_OPACITY[b]*t};
 }
 
-export function glassLayer(index,time) {
+export function glassLayer(index,time,total=GLASS_LAYERS) {
   // The final instance is a stationary, sharp front pane. Nine echoes travel
   // behind it; fading at both ends makes the sorted loop seam continuous.
-  if(index===GLASS_LAYERS-1)return {position:1,...depthOptics(1)};
-  const count=GLASS_LAYERS-1,flow=((time*.032*count)%1+1)%1;
+  if(index===total-1)return {position:1,...depthOptics(1)};
+  const count=total-1,flow=((time*.032*count)%1+1)%1;
   const position=(index+flow)/count*.9;
   const optics=depthOptics(position);
   return {position,brightness:optics.brightness,opacity:optics.opacity*smooth(0,.09,position)*(1-smooth(.78,.9,position))};

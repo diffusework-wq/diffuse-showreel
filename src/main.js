@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
 import './style.css';
+import {createControls} from './controls.js';
 import {LETTERS,clamp,smooth,timeline,localMorph,slotPosition,letterTurn} from './timeline.js';
 import {makeGlyphTexture,sampleGlyphField,glassVertex,glassFragment} from './glyphs.js';
 import {createCinema} from './video.js';
@@ -13,7 +14,7 @@ const diagnostics=document.querySelector('#diagnostics');
 const params=new URLSearchParams(location.search);
 const debug=params.has('debug');
 diagnostics.hidden=!debug||params.get('debug')==='quiet';
-const quality={layers:GLASS_LAYERS,pixelRatio:Math.min(devicePixelRatio,2)};
+const quality={layers:24,pixelRatio:Math.min(devicePixelRatio,2)};
 const state={target:0,progress:0,hover:-1,hoverAmounts:Array(10).fill(0),frames:[],phaseFrames:{},events:[],errors:[],phase:'initializing',pointer:{x:-100,y:-100},started:performance.now()};
 window.addEventListener('error',e=>state.errors.push(e.message));
 window.addEventListener('unhandledrejection',e=>state.errors.push(String(e.reason)));
@@ -46,7 +47,7 @@ for(let i=0;i<LETTERS.length;i++){
   const optics=new THREE.InstancedBufferAttribute(new Float32Array(quality.layers*2),2).setUsage(THREE.DynamicDrawUsage);
   geo.setAttribute('layerOptics',optics);
   const palette=COLOR_FAMILIES[spec.family];
-  const uniforms={uResolution:{value:new THREE.Vector2(innerWidth*quality.pixelRatio,innerHeight*quality.pixelRatio)},uTrailDistance:{value:.12},uGlyph:{value:makeGlyphTexture(spec.from,spec.to)},uCore:{value:new THREE.Color(palette.core)},uHighlight:{value:new THREE.Color(palette.highlight)},uMid:{value:new THREE.Color(palette.mid)},uDeep:{value:new THREE.Color(palette.deep)},uStops:{value:new THREE.Vector3(...GRADIENT_STOPS.slice(1,4))},uGradientDirection:{value:new THREE.Vector2(Math.sin(THREE.MathUtils.degToRad(GRADIENT_ANGLE)),-Math.cos(THREE.MathUtils.degToRad(GRADIENT_ANGLE)))},uBounds:{value:new THREE.Vector4((spec.from==='I'?58:194)/256,(spec.from==='-'?25:200)/256,((spec.to||spec.from)==='I'?58:194)/256,((spec.to||spec.from)==='-'?25:200)/256)},uMorph:{value:0},uOpacity:{value:1},uTime:{value:0},uPixelRatio:{value:quality.pixelRatio},uDepthBlur:{value:1.8}};
+  const uniforms={uEffect:{value:new THREE.Vector4(.8,.16,.45,1)},uFinish:{value:new THREE.Vector4(1,1,1,0)},uResolution:{value:new THREE.Vector2(innerWidth*quality.pixelRatio,innerHeight*quality.pixelRatio)},uTrailDistance:{value:.12},uGlyph:{value:makeGlyphTexture(spec.from,spec.to)},uCore:{value:new THREE.Color(palette.core)},uHighlight:{value:new THREE.Color(palette.highlight)},uMid:{value:new THREE.Color(palette.mid)},uDeep:{value:new THREE.Color(palette.deep)},uStops:{value:new THREE.Vector3(...GRADIENT_STOPS.slice(1,4))},uGradientDirection:{value:new THREE.Vector2(Math.sin(THREE.MathUtils.degToRad(GRADIENT_ANGLE)),-Math.cos(THREE.MathUtils.degToRad(GRADIENT_ANGLE)))},uBounds:{value:new THREE.Vector4((spec.from==='I'?58:194)/256,(spec.from==='-'?25:200)/256,((spec.to||spec.from)==='I'?58:194)/256,((spec.to||spec.from)==='-'?25:200)/256)},uMorph:{value:0},uOpacity:{value:1},uTime:{value:0},uPixelRatio:{value:quality.pixelRatio},uDepthBlur:{value:1.8}};
   const material=new THREE.ShaderMaterial({vertexShader:glassVertex,fragmentShader:glassFragment,uniforms,transparent:true,depthWrite:false,side:THREE.DoubleSide});
   const mesh=new THREE.InstancedMesh(geo,material,quality.layers);mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);mesh.frustumCulled=false;
   mesh.userData.index=i;mesh.boundingSphere=new THREE.Sphere(new THREE.Vector3(),4);
@@ -55,6 +56,17 @@ for(let i=0;i<LETTERS.length;i++){
   const label=document.createElement('div');label.className='letter-label';label.innerHTML=`${spec.title}<small>${spec.subtitle}</small>`;labels.append(label);
   glyphs.push({spec,group,mesh,layers,optics,uniforms,hit,label,morph:0,opacity:1});
 }
+let activeLayers=10;
+createControls(settings=>{
+ activeLayers=settings.layers;
+ for(let i=0;i<glyphs.length;i++){
+  const g=glyphs[i];g.mesh.count=activeLayers;
+  g.uniforms.uCore.value.set(settings.colors[i].core);
+  g.uniforms.uHighlight.value.set(settings.colors[i].highlight);
+  g.uniforms.uEffect.value.set(settings.strength,settings.softness,settings.solid,settings.outline);
+  g.uniforms.uFinish.value.set(settings.opacity,settings.glow,settings.saturation,0);
+ }
+},progress=>{state.target=progress;});
 const cinema=createCinema();
 const atmosphere=createAtmosphere();
 const cinemaElement=document.querySelector('#cinema');
@@ -73,7 +85,7 @@ function resize(){
   glassTarget.setSize(drawingSize.x,drawingSize.y);
 }
 resize();addEventListener('resize',resize);
-addEventListener('pointermove',event=>{state.pointer.x=event.clientX;state.pointer.y=event.clientY;});
+addEventListener('pointermove',event=>{if(event.target.closest?.("#glass-controls, #controls-toggle")){state.pointer.x=-100;state.pointer.y=-100;state.hover=-1;return;}state.pointer.x=event.clientX;state.pointer.y=event.clientY;});
 document.addEventListener('pointerleave',()=>{state.pointer.x=-100;state.pointer.y=-100;state.hover=-1;});
 addEventListener('wheel',event=>{if(event.ctrlKey)return;event.preventDefault();const delta=event.deltaY*(event.deltaMode===1?16:event.deltaMode===2?innerHeight:1);state.target=clamp(state.target+delta/4200);state.events.push({type:'wheel',delta,target:state.target,time:performance.now()});if(state.events.length>80)state.events.shift();},{passive:false});
 let touchY=null;
@@ -112,9 +124,9 @@ function render(now){
     g.uniforms.uDepthBlur.value=.65*(1-timelineState.push);
     const depth=2.05*(1-.28*timelineState.morph)+hover*.25;
     g.uniforms.uTrailDistance.value=depth*.0288*.8;
-    for(let j=0;j<quality.layers;j++){
+    for(let j=0;j<activeLayers;j++){
       // Keep every pane rigid and draw back to front even across the loop seam.
-      const layer=glassLayer(j,t+i*.37);
+      const layer=glassLayer(j,t+i*.37,activeLayers);
       g.layers.setX(j,layer.position);
       g.optics.setXY(j,layer.brightness,layer.opacity);
       temp.position.set(0,0,(layer.position-.5)*depth);
