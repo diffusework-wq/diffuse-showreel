@@ -90,16 +90,16 @@ export const glassFragment=`
   uniform vec4 uBounds,uEffect,uFinish,uLight,uMaterial;
   uniform vec3 uFillCurve,uEdgeCurve,uLightPose;
   uniform vec2 uGradientDirection;
-  uniform float uMorph,uOpacity,uTime,uPixelRatio,uDepthBlur;
+  uniform float uTransition,uMorph,uOpacity,uTime,uPixelRatio,uDepthBlur;
   varying vec2 vUv,vOptics,vTrailPixels; varying float vLayer;
 
   float depthCurve(vec3 values,float t){
     return t<=.5?mix(values.x,values.y,smoothstep(0.,.5,t)):mix(values.y,values.z,smoothstep(.5,1.,t));
   }
-  float field(vec2 uv){
+  float field(vec2 uv,float glyphMix){
     vec4 packed=texture2D(uGlyph,uv);
     vec2 unpack16=vec2(256./257.,1./257.);
-    return mix(dot(packed.rg,unpack16),dot(packed.ba,unpack16),uMorph)-.5;
+    return mix(dot(packed.rg,unpack16),dot(packed.ba,unpack16),glyphMix)-.5;
   }
   vec4 glassGradient(float t){
     if(t<uStops.x)return vec4(mix(uHighlight,uCore,t/uStops.x),1.);
@@ -107,8 +107,8 @@ export const glassFragment=`
     if(t<uStops.z)return mix(vec4(uMid,1.),vec4(uDeep,.45),(t-uStops.y)/(uStops.z-uStops.y));
     return mix(vec4(uDeep,.45),vec4(0.),(t-uStops.z)/(1.-uStops.z));
   }
-  void main(){
-    float d=field(vUv);
+  vec4 shadeGlyph(float glyphMix){
+    float d=field(vUv,glyphMix);
     float pixel=max(fwidth(d),.00001);
     // Selective defocus broadens coverage, never the primary front contour.
     float defocus=1.-smoothstep(.08,.82,vLayer);
@@ -122,7 +122,7 @@ export const glassFragment=`
     vec2 trailUv=dFdx(vUv)*vTrailPixels.x+dFdy(vUv)*vTrailPixels.y;
     float trailShape=shape*(8./36.),trailEdge=edge*(8./36.);
     for(int j=1;j<=7;j++){
-      float sampleD=field(vUv+trailUv*(float(j)/7.));
+      float sampleD=field(vUv+trailUv*(float(j)/7.),glyphMix);
       float weight=(8.-float(j))/36.;
       trailShape+=smoothstep(-aa,aa,sampleD)*weight;
       trailEdge+=(smoothstep(-aa,aa,sampleD+halfStroke)-smoothstep(-aa,aa,sampleD-halfStroke))*weight;
@@ -131,7 +131,7 @@ export const glassFragment=`
 
     // Normalize to the ink bounds, so slender I and the dash receive the same
     // approved 135-degree gradient as wide letters, including during morphs.
-    vec2 ink=(vUv-.5)/mix(uBounds.xy,uBounds.zw,uMorph)+.5;
+    vec2 ink=(vUv-.5)/mix(uBounds.xy,uBounds.zw,glyphMix)+.5;
     float diagonal=clamp(dot(vec2(ink.x,1.-ink.y),uGradientDirection)/(uGradientDirection.x+uGradientDirection.y),0.,1.);
     vec4 body=glassGradient(diagonal);
 
@@ -174,17 +174,33 @@ export const glassFragment=`
     // Stable texture-space halo: avoid fwidth-driven spikes at corners.
     // Average neighboring SDF values only for the glow, keeping the ink crisp.
     vec2 haloStep=vec2(.0025,0.);
-    float haloDistance=(d*4.+field(vUv+haloStep)+field(vUv-haloStep)+field(vUv+haloStep.yx)+field(vUv-haloStep.yx))/8.;
+    float haloDistance=(d*4.+field(vUv+haloStep,glyphMix)+field(vUv-haloStep,glyphMix)+field(vUv+haloStep.yx,glyphMix)+field(vUv-haloStep.yx,glyphMix))/8.;
     float glowWidth=.018+defocus*.008;
     float halo=exp(-pow(max(0.,-haloDistance)/glowWidth,2.))*(1.-smoothstep(-.003,.003,haloDistance));
     float glow=halo*(.008+faceLight*.16*uEffect.x)*body.a*uFinish.y;
     float alpha=clamp(surface+glow,0.,1.)*vOptics.y*uOpacity*uFinish.x;
-    if(alpha<.0001)discard;
+
     tint=mix(tint,uHighlight,clamp((rim*body.a*(.06+.80*faceLight)+glow)/max(surface+glow,.0001),0.,1.));
     float luminance=dot(tint,vec3(.2126,.7152,.0722));
     tint=max(vec3(0.),mix(vec3(luminance),tint,uFinish.z));
     tint*=vOptics.x;
-    gl_FragColor=vec4(tint,alpha);
+    return vec4(tint,alpha);
+  }
+  void main(){
+    vec4 result;
+    if(uTransition>1.5){result=shadeGlyph(uMorph);}
+    else if(uMorph<.00001){result=shadeGlyph(0.);}
+    else if(uMorph>.99999){result=shadeGlyph(1.);}
+    else{
+      // Blend complete, antialiased glyphs in premultiplied linear light.
+      // Never interpolate their distance fields: unrelated strokes keep their shape.
+      float amount=uTransition>.5?smoothstep(vLayer*.6,vLayer*.6+.4,uMorph):uMorph;
+      vec4 a=shadeGlyph(0.),b=shadeGlyph(1.);
+      float alpha=mix(a.a,b.a,amount);
+      result=vec4(mix(a.rgb*a.a,b.rgb*b.a,amount)/max(alpha,.00001),alpha);
+    }
+    if(result.a<.0001)discard;
+    gl_FragColor=result;
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
   }

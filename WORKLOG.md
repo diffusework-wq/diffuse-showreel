@@ -113,3 +113,10 @@ Verification: 18 tests pass including curve interpolation bounds, preset migrati
 Glow now uses a stable texture-space Gaussian distance with neighboring SDF averaging, avoiding derivative-driven corner spikes while keeping face/contour AA separate. Added 1–6 area-light copies with plus/minus buttons and bounded slider. DIFFUSE and SHOW/REEL independently expose XYZ degrees and center/front/rear pivot, with endpoint preview buttons. Hover and scroll interpolate endpoint settings. Visible mesh acquisition handles custom rotations, with slot retention during hover. Settings persist/export with backward-compatible defaults.
 
 Verification: 19 tests pass and build passes. Browser verified count 2 to 3, saved values after reload, SHOW/REEL Y=-10 degrees yields -0.175 radians while DIFFUSE remains -0.38, front-pivot selection, smooth-halo appearance, reset and no console errors.
+
+
+## 2026-09-27 — Contour-preserving letter transitions
+
+The reported W/E and R/L notches came from interpolated signed-distance fields, not simply pixel aliasing. Default now shades complete source and target glyphs independently, then crossfades premultiplied linear-light results. Added rear-to-front layer replacement; original SDF morph is an explicitly labeled optional mode. Endpoint rendering skips the extra glyph evaluation. Raycast coverage follows the selected mode; previous material/font/axis settings are retained.
+
+Verification: 20 tests pass, production build passes. Browser verified crossfade and layer replacement at progress 0.2773, intact W/E and R/L contours rather than interpolated dents, no console errors, approximately 60 FPS on the current preview.

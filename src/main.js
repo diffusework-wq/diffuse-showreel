@@ -47,7 +47,7 @@ for(let i=0;i<LETTERS.length;i++){
   const optics=new THREE.InstancedBufferAttribute(new Float32Array(quality.layers*2),2).setUsage(THREE.DynamicDrawUsage);
   geo.setAttribute('layerOptics',optics);
   const palette=COLOR_FAMILIES[spec.family];
-  const uniforms={uLight:{value:new THREE.Vector4(0,.15,.7,0)},uLightPose:{value:new THREE.Vector3(.5,.5,Math.PI/4)},uMaterial:{value:new THREE.Vector4(1.5,.35,1,0)},uFillCurve:{value:new THREE.Vector3(1,1,1)},uEdgeCurve:{value:new THREE.Vector3(1,1,1)},uEffect:{value:new THREE.Vector4(.8,.16,.45,1)},uFinish:{value:new THREE.Vector4(1,1,1,0)},uResolution:{value:new THREE.Vector2(innerWidth*quality.pixelRatio,innerHeight*quality.pixelRatio)},uTrailDistance:{value:.12},uGlyph:{value:makeGlyphTexture(spec.from,spec.to)},uCore:{value:new THREE.Color(palette.core)},uHighlight:{value:new THREE.Color(palette.highlight)},uMid:{value:new THREE.Color(palette.mid)},uDeep:{value:new THREE.Color(palette.deep)},uStops:{value:new THREE.Vector3(...GRADIENT_STOPS.slice(1,4))},uGradientDirection:{value:new THREE.Vector2(Math.sin(THREE.MathUtils.degToRad(GRADIENT_ANGLE)),-Math.cos(THREE.MathUtils.degToRad(GRADIENT_ANGLE)))},uBounds:{value:new THREE.Vector4((spec.from==='I'?58:194)/256,(spec.from==='-'?25:200)/256,((spec.to||spec.from)==='I'?58:194)/256,((spec.to||spec.from)==='-'?25:200)/256)},uMorph:{value:0},uOpacity:{value:1},uTime:{value:0},uPixelRatio:{value:quality.pixelRatio},uDepthBlur:{value:1.8}};
+  const uniforms={uTransition:{value:0},uLight:{value:new THREE.Vector4(0,.15,.7,0)},uLightPose:{value:new THREE.Vector3(.5,.5,Math.PI/4)},uMaterial:{value:new THREE.Vector4(1.5,.35,1,0)},uFillCurve:{value:new THREE.Vector3(1,1,1)},uEdgeCurve:{value:new THREE.Vector3(1,1,1)},uEffect:{value:new THREE.Vector4(.8,.16,.45,1)},uFinish:{value:new THREE.Vector4(1,1,1,0)},uResolution:{value:new THREE.Vector2(innerWidth*quality.pixelRatio,innerHeight*quality.pixelRatio)},uTrailDistance:{value:.12},uGlyph:{value:makeGlyphTexture(spec.from,spec.to)},uCore:{value:new THREE.Color(palette.core)},uHighlight:{value:new THREE.Color(palette.highlight)},uMid:{value:new THREE.Color(palette.mid)},uDeep:{value:new THREE.Color(palette.deep)},uStops:{value:new THREE.Vector3(...GRADIENT_STOPS.slice(1,4))},uGradientDirection:{value:new THREE.Vector2(Math.sin(THREE.MathUtils.degToRad(GRADIENT_ANGLE)),-Math.cos(THREE.MathUtils.degToRad(GRADIENT_ANGLE)))},uBounds:{value:new THREE.Vector4((spec.from==='I'?58:194)/256,(spec.from==='-'?25:200)/256,((spec.to||spec.from)==='I'?58:194)/256,((spec.to||spec.from)==='-'?25:200)/256)},uMorph:{value:0},uOpacity:{value:1},uTime:{value:0},uPixelRatio:{value:quality.pixelRatio},uDepthBlur:{value:1.8}};
   const material=new THREE.ShaderMaterial({vertexShader:glassVertex,fragmentShader:glassFragment,uniforms,transparent:true,depthWrite:false,side:THREE.DoubleSide});
   const mesh=new THREE.InstancedMesh(geo,material,quality.layers);mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);mesh.frustumCulled=false;
   mesh.userData.index=i;mesh.boundingSphere=new THREE.Sphere(new THREE.Vector3(),4);
@@ -65,7 +65,7 @@ createControls(settings=>{
  const fontChanged=currentFont!==settings.font||fontRevision!==(settings.fontRevision||0);
  if(fontChanged){clearGlyphCache();currentFont=settings.font;fontRevision=settings.fontRevision||0;}
  for(let i=0;i<glyphs.length;i++){
-  const g=glyphs[i];g.mesh.count=activeLayers;
+  const g=glyphs[i];g.mesh.count=activeLayers;g.uniforms.uTransition.value=["crossfade","layers","morph"].indexOf(settings.transition);
   if(fontChanged){const old=g.uniforms.uGlyph.value;g.uniforms.uGlyph.value=makeGlyphTexture(g.spec.from,g.spec.to,fontFamilies[currentFont]);old.dispose();}
   g.uniforms.uFillCurve.value.fromArray(settings.fillCurve);
   g.uniforms.uEdgeCurve.value.fromArray(settings.edgeCurve);
@@ -166,7 +166,9 @@ function render(now){
     if(h.object===g.hit)return state.hover===h.object.userData.index;
     if(g.optics.getY(h.instanceId)<.015)return false;
     const [source,target]=sampleGlyphField(g.uniforms.uGlyph.value.image,h.uv.x,h.uv.y);
-    return source*(1-g.morph)+target*g.morph>.496;
+    if(orientation.transition==='morph')return source*(1-g.morph)+target*g.morph>.496;
+    const amount=orientation.transition==='layers'?smooth(g.layers.getX(h.instanceId)*.6,g.layers.getX(h.instanceId)*.6+.4,g.morph):g.morph;
+    return (amount<.98&&source>.496)||(amount>.02&&target>.496);
   });
   const nextHover=hit?hit.object.userData.index:-1;
   if(nextHover!==state.hover){state.events.push({type:'hover',from:state.hover,to:nextHover,time:now});if(state.events.length>80)state.events.shift();}
