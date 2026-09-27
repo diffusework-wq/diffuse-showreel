@@ -56,10 +56,12 @@ for(let i=0;i<LETTERS.length;i++){
   const label=document.createElement('div');label.className='letter-label';label.innerHTML=`${spec.title}<small>${spec.subtitle}</small>`;labels.append(label);
   glyphs.push({spec,group,mesh,layers,optics,uniforms,hit,label,morph:0,opacity:1});
 }
+let orientation=null;
+const pivotOffset=new THREE.Vector3();
 let activeLayers=10,currentFont="design",fontRevision=0;
 const fontFamilies={design:"design",sans:"Arial, sans-serif",serif:"Georgia, serif",condensed:"Impact, sans-serif",mono:"Courier New, monospace",local:"DiffuseLocal"};
 createControls(settings=>{
- activeLayers=settings.layers;
+ activeLayers=settings.layers;orientation=settings;
  const fontChanged=currentFont!==settings.font||fontRevision!==(settings.fontRevision||0);
  if(fontChanged){clearGlyphCache();currentFont=settings.font;fontRevision=settings.fontRevision||0;}
  for(let i=0;i<glyphs.length;i++){
@@ -67,7 +69,7 @@ createControls(settings=>{
   if(fontChanged){const old=g.uniforms.uGlyph.value;g.uniforms.uGlyph.value=makeGlyphTexture(g.spec.from,g.spec.to,fontFamilies[currentFont]);old.dispose();}
   g.uniforms.uFillCurve.value.fromArray(settings.fillCurve);
   g.uniforms.uEdgeCurve.value.fromArray(settings.edgeCurve);
-  g.uniforms.uLight.value.set(['dual','strip','ellipse','rectangle'].indexOf(settings.lightShape),settings.lightWidth,settings.lightHeight,0);
+  g.uniforms.uLight.value.set(['dual','strip','ellipse','rectangle'].indexOf(settings.lightShape),settings.lightWidth,settings.lightHeight,settings.lightCount);
   g.uniforms.uLightPose.value.set(settings.lightX,settings.lightY,settings.lightAngle*Math.PI/180);
   g.uniforms.uMaterial.value.x=settings.ior;g.uniforms.uMaterial.value.y=settings.roughness;
   g.uniforms.uCore.value.set(settings.colors[i].core);
@@ -126,13 +128,18 @@ function render(now){
     const turn=letterTurn(localMorph(timelineState.morph,hover));
     g.morph=turn.morph;
     g.opacity=lettersOpacity*(g.spec.to===null?1-smooth(.05,1,g.morph):1);
-    g.group.position.set(pos.x,pos.y,0);
-    g.group.rotation.set(turn.pitch,turn.yaw,0);
-    g.uniforms.uMaterial.value.z=Math.abs(Math.cos(turn.pitch)*Math.cos(turn.yaw));
+    const depth=2.05*(1-.28*timelineState.morph)+hover*.25;
+    const blend=smooth(0,1,localMorph(timelineState.morph,hover));
+    const axis=key=>THREE.MathUtils.degToRad(THREE.MathUtils.lerp(orientation['diffuse'+key],orientation['show'+key],blend));
+    g.group.rotation.set(axis('X'),axis('Y'),axis('Z'));
+    const pivotValue=name=>name==='front'?1:name==='rear'?-1:0;
+    const pivotZ=THREE.MathUtils.lerp(pivotValue(orientation.diffusePivot),pivotValue(orientation.showPivot),blend)*depth*.5;
+    pivotOffset.set(0,0,pivotZ).applyEuler(g.group.rotation);
+    g.group.position.set(pos.x-pivotOffset.x,pos.y-pivotOffset.y,pivotZ-pivotOffset.z);
+    g.uniforms.uMaterial.value.z=Math.abs(Math.cos(g.group.rotation.x)*Math.cos(g.group.rotation.y));
     g.hit.position.set(pos.x,pos.y,.55);g.hit.rotation.set(-.3,-.38,0);
     g.uniforms.uMorph.value=g.morph;g.uniforms.uOpacity.value=g.opacity;g.uniforms.uTime.value=t+i*.37;
     g.uniforms.uDepthBlur.value=.65*(1-timelineState.push);
-    const depth=2.05*(1-.28*timelineState.morph)+hover*.25;
     g.uniforms.uTrailDistance.value=depth*.0288*.8;
     for(let j=0;j<activeLayers;j++){
       // Keep every pane rigid and draw back to front even across the loop seam.
@@ -151,15 +158,15 @@ function render(now){
   }
   scene.updateMatrixWorld(true);
   pointer.set(state.pointer.x/innerWidth*2-1,1-state.pointer.y/innerHeight*2);raycaster.setFromCamera(pointer,camera);
-  // Stable hit planes prevent the rotating silhouette from releasing hover.
-  const hits=timelineState.push<.15?raycaster.intersectObjects(glyphs.map(g=>g.hit),false):[];
+  // Acquire the visible rotated glyph, then retain its slot during the turn.
+  const hits=timelineState.push<.15?raycaster.intersectObjects(glyphs.flatMap(g=>[g.mesh,g.hit]),false):[];
   const hit=hits.find(h=>{
     const g=glyphs[h.object.userData.index];
     if(g.spec.to===null&&timelineState.morph>.97)return false;
+    if(h.object===g.hit)return state.hover===h.object.userData.index;
+    if(g.optics.getY(h.instanceId)<.015)return false;
     const [source,target]=sampleGlyphField(g.uniforms.uGlyph.value.image,h.uv.x,h.uv.y);
-    const amount=letterTurn(timelineState.morph).morph;
-    const baseline=source*(1-amount)+target*amount;
-    return state.hover===h.object.userData.index||baseline>.496;
+    return source*(1-g.morph)+target*g.morph>.496;
   });
   const nextHover=hit?hit.object.userData.index:-1;
   if(nextHover!==state.hover){state.events.push({type:'hover',from:state.hover,to:nextHover,time:now});if(state.events.length>80)state.events.shift();}

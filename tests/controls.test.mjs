@@ -15,3 +15,7 @@ test('material settings migrate old presets and reject unsafe or unavailable fon
  assert.deepEqual(s.fillCurve,[0,1,1]);assert.deepEqual(s.edgeCurve,[2,.25,0]);assert.equal(s.ior,2.5);assert.equal(s.roughness,0);assert.equal(s.font,'design');assert.equal(s.lightShape,'dual');
  assert.deepEqual(sanitize({layers:12}).fillCurve,[1,1,1]);assert.equal(sanitize({font:'serif',lightShape:'rectangle'}).font,'serif');
 });
+test('light count and independent endpoint transforms survive validation',()=>{
+ const s=sanitize({lightCount:99,diffuseX:25,showX:-40,diffusePivot:'front',showPivot:'rear',showY:900});
+ assert.equal(s.lightCount,6);assert.equal(s.diffuseX,25);assert.equal(s.showX,-40);assert.equal(s.showY,70);assert.equal(s.diffusePivot,'front');assert.equal(s.showPivot,'rear');assert.equal(sanitize({lightCount:-3}).lightCount,1);assert.equal(sanitize({lightShape:'ellipse'}).lightCount,1);
+});

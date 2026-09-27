@@ -106,3 +106,10 @@ Added dual-strip, strip, elliptical and rectangular analytic light profiles with
 Font selection rebuilds SDF textures and disposes prior GPU textures. Built-in system font choices persist. Local FontFace files remain in the current tab only, are never uploaded and are not embedded in JSON; reload falls back safely to design glyphs. Settings export now includes the new fields.
 
 Verification: 18 tests pass including curve interpolation bounds, preset migration and font validation. Browser verified ellipse selection, 0/1/0 fill, direct midpoint drag to 0.49, Georgia rendering, successful local Arial TTF loading, saved curve/Georgia after reload, reset, and no console errors. Production build passed.
+
+
+## 2026-09-27 — Smooth halo, light count and independent transforms
+
+Glow now uses a stable texture-space Gaussian distance with neighboring SDF averaging, avoiding derivative-driven corner spikes while keeping face/contour AA separate. Added 1–6 area-light copies with plus/minus buttons and bounded slider. DIFFUSE and SHOW/REEL independently expose XYZ degrees and center/front/rear pivot, with endpoint preview buttons. Hover and scroll interpolate endpoint settings. Visible mesh acquisition handles custom rotations, with slot retention during hover. Settings persist/export with backward-compatible defaults.
+
+Verification: 19 tests pass and build passes. Browser verified count 2 to 3, saved values after reload, SHOW/REEL Y=-10 degrees yields -0.175 radians while DIFFUSE remains -0.38, front-pivot selection, smooth-halo appearance, reset and no console errors.

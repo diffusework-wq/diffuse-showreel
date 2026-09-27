@@ -144,13 +144,18 @@ export const glassFragment=`
     // Analytic area-light profiles: blur the boundary, not the whole letter.
     float softness=uEffect.y+uMaterial.y*.16;
     float width=max(.015,uLight.y),height=max(.015,uLight.z);
-    float lightDistance;
-    if(uLight.x<.5){lightDistance=abs(abs(q.x)-.25)-width*.5;}
-    else if(uLight.x<1.5){lightDistance=abs(q.x)-width*.5;}
-    else if(uLight.x<2.5){lightDistance=(length(q/vec2(width,height))-.5)*min(width,height);}
-    else{vec2 box=abs(q)-vec2(width,height)*.5;lightDistance=length(max(box,0.))+min(max(box.x,box.y),0.);}
-    if(uLight.x<1.5)lightDistance=max(lightDistance,abs(q.y)-height*.5);
-    float faceLight=1.-smoothstep(-softness*.25,softness,lightDistance);
+    float faceLight=0.;
+    for(int lamp=0;lamp<6;lamp++){
+      if(float(lamp)>=uLight.w)break;
+      float offset=uLight.w<1.5?0.:(float(lamp)/(uLight.w-1.)-.5)*.70;
+      vec2 lightPoint=q-vec2(offset,0.);
+      float lightDistance;
+      if(uLight.x<1.5){lightDistance=max(abs(lightPoint.x)-width*.5,abs(lightPoint.y)-height*.5);}
+      else if(uLight.x<2.5){lightDistance=(length(lightPoint/vec2(width,height))-.5)*min(width,height);}
+      else{vec2 box=abs(lightPoint)-vec2(width,height)*.5;lightDistance=length(max(box,0.))+min(max(box.x,box.y),0.);}
+      float contribution=1.-smoothstep(-softness*.25,softness,lightDistance);
+      faceLight=1.-(1.-faceLight)*(1.-contribution);
+    }
     // Schlick reflectance is an artistic IOR approximation; no scene refraction.
     float f0=pow((uMaterial.x-1.)/(uMaterial.x+1.),2.);
     float fresnel=f0+(1.-f0)*pow(1.-uMaterial.z,5.);
@@ -166,9 +171,13 @@ export const glassFragment=`
 
     // Rear outlines remain readable. Only a restrained spill hugs lit cuts;
     // the front silhouette retains its original analytic pixel coverage AA.
-    float glowWidth=pixel*(5.0+defocus*1.5)*uPixelRatio;
-    float halo=exp(-pow(abs(d)/max(glowWidth,.00001),2.))*(1.-shape);
-    float glow=halo*(.012+faceLight*.26*uEffect.x)*body.a*uFinish.y;
+    // Stable texture-space halo: avoid fwidth-driven spikes at corners.
+    // Average neighboring SDF values only for the glow, keeping the ink crisp.
+    vec2 haloStep=vec2(.0025,0.);
+    float haloDistance=(d*4.+field(vUv+haloStep)+field(vUv-haloStep)+field(vUv+haloStep.yx)+field(vUv-haloStep.yx))/8.;
+    float glowWidth=.018+defocus*.008;
+    float halo=exp(-pow(max(0.,-haloDistance)/glowWidth,2.))*(1.-smoothstep(-.003,.003,haloDistance));
+    float glow=halo*(.008+faceLight*.16*uEffect.x)*body.a*uFinish.y;
     float alpha=clamp(surface+glow,0.,1.)*vOptics.y*uOpacity*uFinish.x;
     if(alpha<.0001)discard;
     tint=mix(tint,uHighlight,clamp((rim*body.a*(.06+.80*faceLight)+glow)/max(surface+glow,.0001),0.,1.));
