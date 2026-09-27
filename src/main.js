@@ -1,3 +1,4 @@
+import {autoGlow} from './auto-glow.js';
 import {createBackground,createMist} from './diffusion.js';
 import * as THREE from 'three';
 import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
@@ -118,7 +119,7 @@ function snapshot(){
   const durations=state.frames.filter(x=>x<1000),sorted=[...durations].sort((a,b)=>a-b);
   const mean=durations.reduce((a,b)=>a+b,0)/Math.max(durations.length,1);
   const phases=Object.fromEntries(Object.entries(state.phaseFrames).map(([key,values])=>{const s=[...values].sort((a,b)=>a-b);return [key,{samples:values.length,fps:1000/(values.reduce((a,b)=>a+b,0)/values.length),p95ms:s[Math.floor(s.length*.95)]}];}));
-  return {phase:state.phase,progress:+state.progress.toFixed(4),target:+state.target.toFixed(4),hover:state.hover,viewport:{width:innerWidth,height:innerHeight,dpr:devicePixelRatio,renderDpr:renderer.getPixelRatio()},userAgent:navigator.userAgent,performance:{samples:durations.length,fps:+(1000/mean).toFixed(1),p95ms:sorted[Math.floor(sorted.length*.95)]||0,phases},renderer:{drawCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles},letters:glyphs.map((g,i)=>({index:i,from:g.spec.from,to:g.spec.to,morph:+g.morph.toFixed(3),opacity:+g.opacity.toFixed(3),yaw:+g.group.rotation.y.toFixed(3),hoverGlow:+g.glowAmount.toFixed(3),center:{x:+((g.hit.position.clone().project(camera).x*.5+.5)*innerWidth).toFixed(1),y:+((-g.hit.position.clone().project(camera).y*.5+.5)*innerHeight).toFixed(1)}})),video:{...cinema.data},atmosphere:atmosphere.data,events:state.events,errors:state.errors};
+  return {phase:state.phase,progress:+state.progress.toFixed(4),target:+state.target.toFixed(4),hover:state.hover,viewport:{width:innerWidth,height:innerHeight,dpr:devicePixelRatio,renderDpr:renderer.getPixelRatio()},userAgent:navigator.userAgent,performance:{samples:durations.length,fps:+(1000/mean).toFixed(1),p95ms:sorted[Math.floor(sorted.length*.95)]||0,phases},renderer:{drawCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles},letters:glyphs.map((g,i)=>({index:i,from:g.spec.from,to:g.spec.to,morph:+g.morph.toFixed(3),opacity:+g.opacity.toFixed(3),yaw:+g.group.rotation.y.toFixed(3),autoGlow:+(g.autoAmount||0).toFixed(3),hoverGlow:+g.glowAmount.toFixed(3),center:{x:+((g.hit.position.clone().project(camera).x*.5+.5)*innerWidth).toFixed(1),y:+((-g.hit.position.clone().project(camera).y*.5+.5)*innerHeight).toFixed(1)}})),video:{...cinema.data},atmosphere:atmosphere.data,events:state.events,errors:state.errors};
 }
 // Read-only diagnostics support verification without synthetic interaction shortcuts.
 Object.defineProperty(window,'__SHOWREEL__',{value:{snapshot},writable:false});
@@ -138,7 +139,10 @@ function render(now){
     const hover=state.hoverAmounts[i];
     const glowTarget=Number(state.hover===i);
     g.glowAmount+=(glowTarget-g.glowAmount)*(1-Math.exp(-(glowTarget?4:2.2)*dt));
-    g.mistAmount+=(glowTarget-g.mistAmount)*(1-Math.exp(-dt*(glowTarget?3*orientation.mistSpeed:3/orientation.mistDecay)));
+    const auto=g.spec.to===null?0:autoGlow(i,t,state.progress,orientation);
+    const mistTarget=Math.max(glowTarget,auto);
+    g.autoAmount=auto;
+    g.mistAmount+=(mistTarget-g.mistAmount)*(1-Math.exp(-dt*(glowTarget?3*orientation.mistSpeed:3/orientation.mistDecay)));
     const turn=letterTurn(localMorph(timelineState.morph,hover));
     g.morph=turn.morph;
     g.opacity=lettersOpacity*(g.spec.to===null?1-smooth(.05,1,g.morph):1);
@@ -160,7 +164,7 @@ function render(now){
     g.mist.position.set(pos.x,pos.y,-1);g.mist.quaternion.copy(camera.quaternion);
     mist.color.value.copy(g.uniforms.uCore.value);
     mist.amount.value=g.mistAmount*orientation.mistStrength*g.opacity;mist.morph.value=g.morph;
-    mist.spread.value=1+(orientation.mistRange-1)*g.mistAmount;mist.softness.value=orientation.mistBlur;mist.time.value=t;
+    mist.spread.value=1+(orientation.mistRange-1)*Math.min(1,g.mistAmount);mist.softness.value=orientation.mistBlur;mist.time.value=t;
     const trailAngle=orientation.trailAngle*Math.PI/180;mist.direction.value.set(Math.cos(trailAngle),Math.sin(trailAngle)).multiplyScalar(orientation.trailLength*.22);
     g.mist.visible=!!mist.mask.value&&mist.amount.value>.001;
     g.uniforms.uMorph.value=g.morph;g.uniforms.uOpacity.value=g.opacity;g.uniforms.uTime.value=t+i*.37;
@@ -215,3 +219,4 @@ function render(now){
 }
 loading.hidden=true;state.phase='diffuse';requestAnimationFrame(render);
 document.addEventListener('visibilitychange',()=>{prev=performance.now();});
+

@@ -132,3 +132,9 @@ Verification: 21 tests pass, production build passes. Browser verified hover act
 Preserved small hover glow. Added an independently masked, billboarded additive glyph diffusion layer with directional multi-sample streaks, animated expansion and decay, and subtle distortion. This is an artistic glyph-mask effect, not physical illumination or temporal motion blur. Added independent two-color background wash with intensity, range, position and angle controls. Settings persist/export and migrate older presets. Both effects can be disabled with strength zero.
 
 Verification: 22 tests and production build pass. Browser confirmed large hover color spread, editable background color and intensity, scrolling and no console errors. Background uses the same linear compositing/output pass and fades with the scene at cinema entry.
+
+## 2026-09-28 — Scroll-gated automatic glow
+
+Added independent smoothly interpolated per-letter random glow with amount, speed and start/end scroll percentages. Defaults activate between 45 and 70 percent; amount zero disables. Null target letters are excluded, hover remains available, and range edges fade smoothly. A preview button jumps to the configured range midpoint. Settings migrate/persist/export and enforce ordered range bounds.
+
+Validation: 24 tests and build pass. Browser verified independent nonzero glow values at 57 percent, absent letters stay zero, preview button, disable control, and no console errors.
